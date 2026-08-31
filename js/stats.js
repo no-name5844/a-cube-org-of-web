@@ -3,7 +3,9 @@
  * 包含 loadStats, loadStatsFallback, fitGammaMLE, 绘图函数
  */
 
-// 加载统计分析
+// 加载统计分析（统一走浏览器端计算：仅统计已审核通过的成绩，
+// status='approved' 由 RLS + 查询双重保证。数据库的 calculate_statistic()
+// 与前端参数不匹配且为 SECURITY DEFINER，不再使用）
 async function loadStats() {
     var participantId = document.getElementById('mle-participant').value;
     var eventId = document.getElementById('mle-event').value;
@@ -12,91 +14,7 @@ async function loadStats() {
         document.getElementById('mle-prediction').innerHTML = '请选择选手和项目';
         return;
     }
-    
-    // 1. 调用数据库的 calculate_statistic() 函数
-    var { data: statsData, error: statsError } = await dbClient
-        .rpc('calculate_statistic', {
-            participant_id: participantId,
-            event_id: eventId,
-            statistic_type: 'all'
-        });
-    
-    if (statsError) {
-        console.error('调用 calculate_statistic() 失败:', statsError);
-        showAlert('数据库函数调用失败，使用浏览器端计算', 'info');
-        return loadStatsFallback(participantId, eventId);
-    }
-    
-    // 2. 显示统计卡片
-    if (statsData && statsData.length > 0) {
-        var stats = statsData[0];
-        var cardsHtml = 
-            '<div class="stat-card"><h3>单次最佳</h3><div class="value">' + (stats.single_best ? stats.single_best.toFixed(3) : '-') + '</div></div>' +
-            '<div class="stat-card"><h3>平均最佳</h3><div class="value">' + (stats.average_best ? stats.average_best.toFixed(3) : '-') + '</div></div>' +
-            '<div class="stat-card"><h3>AO5 最佳</h3><div class="value">' + (stats.ao5_best ? stats.ao5_best.toFixed(3) : '-') + '</div></div>' +
-            '<div class="stat-card"><h3>AO12 最佳</h3><div class="value">' + (stats.ao12_best ? stats.ao12_best.toFixed(3) : '-') + '</div></div>' +
-            '<div class="stat-card"><h3>总次数</h3><div class="value">' + (stats.total_attempts || 0) + '</div></div>';
-        document.getElementById('stats-display').innerHTML = cardsHtml;
-    }
-    
-    // 3. 获取成绩数据用于 Gamma 分布拟合
-    var { data: attempts, error: attemptsError } = await dbClient
-        .from('attempts')
-        .select('*, competition_events!inner(*)')
-        .eq('participant_id', participantId)
-        .eq('competition_events.event_id', eventId)
-        .eq('is_dnf', false)
-        .not('solve_time', 'is', null)
-        .order('created_at');
-    
-    if (attemptsError || !attempts || attempts.length === 0) {
-        document.getElementById('mle-prediction').innerHTML = '暂无有效成绩';
-        return;
-    }
-    
-    var times = attempts.map(a => a.solve_time);
-    
-    // 4. Gamma 分布 MLE 拟合
-    var mle = fitGammaMLE(times);
-    if (!mle) {
-        document.getElementById('mle-prediction').innerHTML = '成绩数据不足，无法拟合';
-        return;
-    }
-    
-    var alpha = mle.alpha;
-    var beta = mle.beta;
-    var mode = (alpha > 1) ? (alpha - 1) / beta : 0;
-    var mean = alpha / beta;
-    var variance = alpha / (beta * beta);
-    
-    // 5. 显示 MLE 预测
-    var predictionHtml = 
-        '<h4>📊 Gamma 分布参数（MLE 估计）</h4>' +
-        '<p><strong>α（形状）</strong>：' + alpha.toFixed(3) + '</p>' +
-        '<p><strong>β（尺度）</strong>：' + beta.toFixed(3) + '</p>' +
-        '<p><strong>众数（真实水平）</strong>：' + mode.toFixed(3) + ' 秒</p>' +
-        '<p><strong>均值</strong>：' + mean.toFixed(3) + ' 秒</p>' +
-        '<p><strong>标准差</strong>：' + Math.sqrt(variance).toFixed(3) + ' 秒</p>' +
-        '<h4>🎯 预测</h4>' +
-        '<p>下次成绩 < 10 秒的概率：～ ' + (gammaCdf(10, alpha, beta) * 100).toFixed(1) + '%</p>' +
-        '<p>下次成绩在 ' + mode.toFixed(1) + ' ± 2 秒内的概率：～ ' + ((gammaCdf(mode+2, alpha, beta) - gammaCdf(Math.max(0, mode-2), alpha, beta)) * 100).toFixed(1) + '%</p>';
-    document.getElementById('mle-prediction').innerHTML = predictionHtml;
-    
-    // 6. 绘制 Gamma 分布图
-    drawGammaChart(times, alpha, beta);
-    
-    // 7. 保存 MLE 预测结果到数据库
-    await dbClient.from('mle_predictions').upsert({
-        participant_id: participantId,
-        event_id: eventId,
-        alpha: alpha,
-        beta: beta,
-        mode_value: mode,
-        mean_value: mean,
-        variance_value: variance,
-        sample_size: times.length,
-        confidence_interval: JSON.stringify({ lower: mode - 2*Math.sqrt(variance), upper: mode + 2*Math.sqrt(variance) })
-    }, { onConflict: 'participant_id,event_id' });
+    await loadStatsFallback(participantId, eventId);
 }
 
 // 降级函数：浏览器端计算
@@ -107,6 +25,8 @@ async function loadStatsFallback(participantId, eventId) {
         .eq('participant_id', participantId)
         .eq('competition_events.event_id', eventId)
         .eq('is_dnf', false)
+        .eq('is_dns', false)
+        .eq('status', 'approved')
         .not('solve_time', 'is', null)
         .order('created_at');
     
@@ -206,7 +126,7 @@ function digamma(x) {
     while (x < 6) { result -= 1/x; x++; }
     var xx = 1/x;
     var xx2 = xx*xx;
-    result += Math.log(x) - 0.5*xx - xx2*(1/12 - xx2*(1/120 - xx2*(1/252 - xx2*(1/240 - xx2*(1/132 + xx2/32760))));
+    result += Math.log(x) - 0.5*xx - xx2*(1/12 - xx2*(1/120 - xx2*(1/252 - xx2*(1/240 - xx2*(1/132 + xx2/32760)))));
     return result;
 }
 

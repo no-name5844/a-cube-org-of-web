@@ -300,3 +300,58 @@
             .btn { display: none; }
         }
     
+/* ============================================
+   权限系统样式（v6）
+   ============================================ */
+
+/* 登录栏 */
+.auth-bar {
+    margin: 0 0 14px 0;
+    padding: 12px 16px;
+    background: #f8f9fc;
+    border: 1px solid #e4e7f0;
+    border-radius: 10px;
+}
+.auth-bar input {
+    padding: 8px 12px;
+    border: 1px solid #d0d5e0;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+/* 角色徽章 */
+.role-badge {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: #999;
+    vertical-align: middle;
+}
+.role-user     { background: #5c9ded; }
+.role-editor   { background: #667eea; }
+.role-reviewer { background: #f0a030; }
+.role-admin    { background: #e5533d; }
+.role-anon     { background: #9aa3af; }
+
+/* 用户管理表格中的角色下拉 */
+.role-select {
+    padding: 4px 8px;
+    border: 1px solid #d0d5e0;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+/* 待审核状态徽章（成绩列表） */
+.status-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.status-pending  { background: #fff3e0; color: #e65100; }
+.status-approved { background: #e8f5e9; color: #2e7d32; }
+.status-rejected { background: #ffebee; color: #c62828; }

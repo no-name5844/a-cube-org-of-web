@@ -21,18 +21,22 @@ async function loadCompetitions() {
     var { data, error } = await dbClient.from('competitions').select('*').order('competition_number');
     if (error) { showAlert('加载比赛失败：' + error.message, 'error'); return; }
     if (competitionsTable) competitionsTable.destroy();
+    var columns = [
+        { title: '编号', field: 'competition_number', width: 140 },
+        { title: '名称', field: 'name', minWidth: 150 },
+        { title: '日期', field: 'competition_date', width: 120, formatter: function(cell) { return cell.getValue() ? cell.getValue().split('T')[0] : ''; } },
+        { title: '地点', field: 'location', width: 120 }
+    ];
+    // 删除按钮仅编辑员及以上可见
+    if (isEditorOrAbove()) {
+        columns.push({ title: '操作', width: 100, formatter: function() { return '<button class="btn btn-danger" style="padding:5px 10px;">删除</button>'; }, cellClick: function(e, cell) { deleteCompetition(cell.getRow().getData().id); } });
+    }
     competitionsTable = new Tabulator('#competitions-table', {
         data: data,
         layout: 'fitColumns',
         rowHeight: 26,
         headerHeight: 28,
-        columns: [
-            { title: '编号', field: 'competition_number', width: 140 },
-            { title: '名称', field: 'name', minWidth: 150 },
-            { title: '日期', field: 'competition_date', width: 120, formatter: function(cell) { return cell.getValue() ? cell.getValue().split('T')[0] : ''; } },
-            { title: '地点', field: 'location', width: 120 },
-            { title: '操作', width: 100, formatter: function() { return '<button class="btn btn-danger" style="padding:5px 10px;">删除</button>'; }, cellClick: function(e, cell) { deleteCompetition(cell.getRow().getData().id); } }
-        ]
+        columns: columns
     });
     loadCompetitionsForSelect('config-competition');
 }
@@ -57,7 +61,7 @@ async function loadConfigCompetitionEvents() {
     }
     var html = '<ul style="margin:0; padding-left:20px;">';
     data.forEach(function(ce) {
-        html += '<li>' + ce.events.event_code + ' - ' + ce.events.event_name + '</li>';
+        html += '<li>' + escHtml(ce.events.event_code) + ' - ' + escHtml(ce.events.event_name) + '</li>';
     });
     html += '</ul>';
     container.innerHTML = html;
@@ -217,7 +221,7 @@ async function loadCompetitionsForSelect(selectId) {
     if (!sel) return;
     sel.innerHTML = '<option value="">-- 选择比赛 --</option>';
     (data || []).forEach(function(c) {
-        sel.innerHTML += '<option value="' + c.id + '">' + c.competition_number + ' - ' + c.name + '</option>';
+        sel.innerHTML += '<option value="' + c.id + '">' + escHtml(c.competition_number) + ' - ' + escHtml(c.name) + '</option>';
     });
 }
 
@@ -228,7 +232,7 @@ async function loadParticipantsForSelect(selectId) {
     if (!sel) return;
     sel.innerHTML = '<option value="">-- 选择选手 --</option>';
     (data || []).forEach(function(p) {
-        sel.innerHTML += '<option value="' + p.id + '">' + p.name + '</option>';
+        sel.innerHTML += '<option value="' + p.id + '">' + escHtml(p.name) + '</option>';
     });
 }
 
@@ -252,13 +256,15 @@ async function loadRecentAttempts() {
             { title: '比赛', field: 'competition_events.competitions.name' },
             { title: '次数', field: 'attempt_number', width: 80 },
             { title: '时间', formatter: function(cell) {
-                var row = cell.getRow().getData();
-                if (row.is_dnf) return 'DNF';
-                if (!row.solve_time) return '-';
-                return row.solve_time + (row.is_plus_two ? '+' : '');
+                return formatAttemptTime(cell.getRow().getData());
             }},
             { title: '魔方', field: 'cube_type', width: 100 },
-            { title: 'TPS', field: 'tps', width: 80 }
+            { title: 'TPS', field: 'tps', width: 80 },
+            { title: '状态', width: 100, formatter: function(cell) {
+                var status = cell.getRow().getData().status || 'approved';
+                var label = { pending: '⏳ 待审核', approved: '✅ 已通过', rejected: '❌ 已驳回' }[status] || status;
+                return '<span class="status-badge status-' + status + '">' + label + '</span>';
+            }}
         ]
     });
 }
@@ -285,6 +291,7 @@ async function loadViewData() {
         .from('attempts')
         .select('*, participants(name)')
         .eq('competition_event_id', ceData.id)
+        .eq('status', 'approved')
         .order('attempt_number');
     
     if (error) { showAlert('加载数据失败：' + error.message, 'error'); return; }
@@ -299,10 +306,7 @@ async function loadViewData() {
             { title: '选手', field: 'participants.name' },
             { title: '次数', field: 'attempt_number', width: 80 },
             { title: '时间', formatter: function(cell) {
-                var row = cell.getRow().getData();
-                if (row.is_dnf) return 'DNF';
-                if (!row.solve_time) return '-';
-                return row.solve_time + (row.is_plus_two ? '+' : '');
+                return formatAttemptTime(cell.getRow().getData());
             }},
             { title: '魔方类型', field: 'cube_type', width: 100 },
             { title: '步数', field: 'move_count', width: 80 },
@@ -310,7 +314,7 @@ async function loadViewData() {
             { title: '打乱', field: 'scramble', width: 150 },
             { title: '备注', formatter: function(cell) {
                 var row = cell.getRow().getData();
-                return row.is_dnf ? 'DNF' : (row.is_plus_two ? '+2' : '');
+                return row.is_dnf ? 'DNF' : (row.is_dns ? 'DNS' : (row.is_plus_two ? '+2' : ''));
             }, width: 80 }
         ]
     });
@@ -329,7 +333,7 @@ async function loadCompetitionEvents(competitionId, selectId) {
     var sel = document.getElementById(selectId);
     sel.innerHTML = '<option value="">-- 选择项目 --</option>';
     (data || []).forEach(function(ce) {
-        sel.innerHTML += '<option value="' + ce.event_id + '">' + ce.events.event_code + ' - ' + ce.events.event_name + '</option>';
+        sel.innerHTML += '<option value="' + ce.event_id + '">' + escHtml(ce.events.event_code) + ' - ' + escHtml(ce.events.event_name) + '</option>';
     });
 }
 
@@ -345,7 +349,7 @@ async function loadParentEvents() {
     if (!sel) return;
     sel.innerHTML = '<option value="">-- 顶级项目（无父项目）--</option>';
     (data || []).forEach(function(e) {
-        sel.innerHTML += '<option value="' + e.id + '">' + e.event_code + ' - ' + e.event_name + '</option>';
+        sel.innerHTML += '<option value="' + e.id + '">' + escHtml(e.event_code) + ' - ' + escHtml(e.event_name) + '</option>';
     });
 }
 

@@ -1,0 +1,5 @@
+# 复制此文件为 .dev.vars 并填入真实值（本地 wrangler dev 用）
+# 生产环境变量在 Cloudflare Dashboard 设置，见 部署说明.md
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key

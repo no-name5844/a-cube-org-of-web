@@ -105,6 +105,9 @@ async function addParticipant() {
 
 // 提交成绩
 async function addAttempt() {
+    if (!checkDB()) return;
+    // 账号信息完全信任数据库：提交前先从数据库刷新最新角色
+    await refreshMyProfile();
     var competitionId = document.getElementById('attempt-competition').value;
     var eventId = document.getElementById('attempt-event').value;
     var participantId = document.getElementById('attempt-participant').value;
@@ -140,18 +143,26 @@ async function addAttempt() {
     
     var attemptNum = parseInt(document.getElementById('attempt-id').value) || 1;
     var cubeType = document.getElementById('attempt-cube-type').value;
-    var solveTime = parseFloat(document.getElementById('attempt-time').value) || null;
-    var isDnf = document.getElementById('attempt-penalty').value === 'dnf';
-    var isPlusTwo = document.getElementById('attempt-penalty').value === '+2';
-    if (!isDnf && solveTime === null) { showAlert('请输入复原时间或勾选 DNF', 'error'); return; }
+    var penalty = document.getElementById('attempt-penalty').value; // none / +2 / dnf
+    var isPlusTwo = penalty === '+2';
+    var solveTimeRaw = document.getElementById('attempt-time').value;
+    var solveTime = parseFloat(solveTimeRaw);
+    // -1 → DNF，-2 → DNS 哨兵值；否则必须是非负数字
+    var isDnf = false, isDns = false;
+    if (penalty === 'dnf') { isDnf = true; solveTime = -1; }
+    else if (penalty === 'dns') { isDns = true; solveTime = -2; }
+    else if (solveTimeRaw === '-2') { isDns = true; solveTime = -2; }
+    else if (solveTimeRaw === '-1') { isDnf = true; solveTime = -1; }
+    if (!isDnf && !isDns && isNaN(solveTime)) { showAlert('请输入有效的时间，或用 -1(DNF) / -2(DNS)', 'error'); return; }
     
     var attemptData = {
         competition_event_id: ceId,
         participant_id: participantId,
         attempt_number: attemptNum,
-        solve_time: isDnf ? null : solveTime,
+        solve_time: solveTime, // 服务端会翻译 -1→DNF / -2→DNS
         cube_type: cubeType,
         is_dnf: isDnf,
+        is_dns: isDns,
         is_plus_two: isPlusTwo,
         notes: ''
     };
@@ -162,10 +173,16 @@ async function addAttempt() {
     } else {
         attemptData.video_url = document.getElementById('attempt-video').value.trim();
     }
-    
-    var { error: insertError } = await dbClient.from('attempts').insert(attemptData);
-    if (insertError) { showAlert('提交成绩失败：' + insertError.message, 'error'); return; }
-    showAlert('✅ 成绩提交成功！', 'success');
+
+    // 强制走 Cloudflare Workers submit-attempt：status 与 submitted_by 由服务端按数据库角色决定，
+    // 前端传的 status/submitted_by 会被 Worker 的白名单丢弃
+    var res = await callWorker('/submit-attempt', attemptData);
+    if (!res.ok) { showAlert('提交成绩失败：' + (res.error.message || '请确认已登录且为编辑员及以上'), 'error'); return; }
+    if (res.data && res.data.status === 'pending') {
+        showAlert('⏳ 成绩已提交，等待审核员审核', 'info');
+    } else {
+        showAlert('✅ 成绩提交成功！', 'success');
+    }
     loadRecentAttempts();
     document.getElementById('attempt-time').value = '';
     if (cubeType === 'smart') {

@@ -1,7 +1,25 @@
 /**
  * UI 辅助函数
- * showAlert, switchTab, toggleSmartFields, checkDB
+ * showAlert, switchTab, toggleSmartFields, checkDB, escHtml, formatAttemptTime
  */
+
+// HTML 转义：所有动态数据拼进 innerHTML 前必须先过这里，防存储型 XSS
+function escHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// 格式化成绩时间：DNS(Did Not Start) / DNF(Did Not Finish) / 数值(+2) / 空
+function formatAttemptTime(row) {
+    if (row.is_dns) return 'DNS';
+    if (row.is_dnf) return 'DNF';
+    if (!row.solve_time && row.solve_time !== 0) return '-';
+    return row.solve_time + (row.is_plus_two ? '+' : '');
+}
 
 function showAlert(message, type) {
     var alertBox = document.getElementById('alertBox');
@@ -30,7 +48,7 @@ function toggleSmartFields() {
 
 // 检查数据库是否已连接
 function checkDB() {
-    if (!supabaseClient) {
+    if (typeof dbClient === 'undefined' || !dbClient) {
         showAlert('⚠️ 请先连接数据库', 'error');
         return false;
     }

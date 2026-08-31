@@ -33,17 +33,36 @@
             <input type="text" id="supabase-key" placeholder="Anon Key" />
             <button onclick="connectDB()">🔗 连接数据库</button>
         </div>
-        
+
+        <!-- 登录 / 用户信息 -->
+        <div class="auth-bar">
+            <div id="auth-login-form" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <span style="font-size:13px; color:#666;">当前身份：<strong>匿名用户</strong>（只读）</span>
+                <input type="email" id="auth-email" placeholder="邮箱" style="max-width:200px;" />
+                <input type="password" id="auth-password" placeholder="密码" style="max-width:160px;" />
+                <button class="btn" style="padding:8px 14px;" onclick="signIn()">登录</button>
+                <button class="btn btn-success" style="padding:8px 14px;" onclick="signUp()">注册</button>
+            </div>
+            <div id="auth-user-info" style="display:none; gap:10px; align-items:center; flex-wrap:wrap;">
+                <span>👋 <strong id="auth-user-name"></strong></span>
+                <span id="auth-role-badge" class="role-badge"></span>
+                <button class="btn" style="padding:6px 14px;" onclick="signOutNow()">退出登录</button>
+            </div>
+        </div>
+
         <div class="tabs">
-            <div class="tab active" onclick="switchTab('competitions')">🏆 比赛管理</div>
-            <div class="tab" onclick="switchTab('events')">⚙️ 项目管理</div>
-            <div class="tab" onclick="switchTab('participants')">👤 选手管理</div>
-            <div class="tab" onclick="switchTab('attempts')">⏱️ 成绩录入</div>
-            <div class="tab" onclick="switchTab('stats')">📊 统计分析</div>
+            <div class="tab" data-minrole="editor" onclick="switchTab('competitions')">🏆 比赛管理</div>
+            <div class="tab" data-minrole="editor" onclick="switchTab('events')">⚙️ 项目管理</div>
+            <div class="tab" data-minrole="editor" onclick="switchTab('participants')">👤 选手管理</div>
+            <div class="tab" data-minrole="editor" onclick="switchTab('attempts')">⏱️ 成绩录入</div>
+            <div class="tab active" data-minrole="anon" onclick="switchTab('stats')">📊 统计分析</div>
+            <div class="tab" data-minrole="user" onclick="switchTab('profile')">🗂️ 我的档案</div>
+            <div class="tab" data-minrole="reviewer" onclick="switchTab('review')">✅ 审核管理</div>
+            <div class="tab" data-minrole="admin" onclick="switchTab('users')">👥 用户管理</div>
         </div>
         
         <!-- 比赛管理 -->
-        <div id="tab-competitions" class="tab-content active">
+        <div id="tab-competitions" class="tab-content">
             <div class="grid">
                 <div>
                     <h3>添加比赛</h3>
@@ -244,11 +263,12 @@
                         <input type="number" id="attempt-time" step="0.001" placeholder="如：12.345">
                     </div>
                     <div class="form-group">
-                        <label>惩罚</label>
+                        <label>状态/惩罚</label>
                         <select id="attempt-penalty">
-                            <option value="none" selected>无</option>
+                            <option value="none" selected>正常完成</option>
                             <option value="+2">+2 秒</option>
-                            <option value="dnf">DNF</option>
+                            <option value="dnf">DNF（未完成）</option>
+                            <option value="dns">DNS（未开始）</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -267,7 +287,7 @@
         </div>
         
         <!-- 统计分析 -->
-        <div id="tab-stats" class="tab-content">
+        <div id="tab-stats" class="tab-content active">
             <div class="grid">
                 <div>
                     <h3>查看统计</h3>
@@ -302,20 +322,79 @@
             </div>
         </div>
         
+        <!-- 我的档案 -->
+        <div id="tab-profile" class="tab-content">
+            <div class="grid">
+                <div>
+                    <h3>📇 账号信息</h3>
+                    <div class="form-group">
+                        <label>用户 ID（唯一标识）</label>
+                        <input type="text" id="my-user-code" readonly style="background:#f0f2f7;" />
+                    </div>
+                    <div class="form-group">
+                        <label>昵称</label>
+                        <input type="text" id="my-nickname" placeholder="昵称" />
+                    </div>
+                    <button class="btn" onclick="saveNickname()">💾 保存昵称</button>
+                    <hr style="margin: 20px 0; border: none; border-top: 1px solid #e9ecef;">
+                    <h3>🔑 修改密码</h3>
+                    <div class="form-group">
+                        <label>新密码（至少 6 位）</label>
+                        <input type="password" id="my-new-password" placeholder="新密码" />
+                    </div>
+                    <button class="btn" onclick="changeMyPassword()">🔑 修改密码</button>
+                </div>
+                <div>
+                    <h3>🏆 我的比赛记录</h3>
+                    <div class="table-responsive">
+                        <div id="my-attempts-table"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 审核管理 -->
+        <div id="tab-review" class="tab-content">
+            <div>
+                <h3>✅ 待审核成绩 <span id="review-count" style="font-size:14px; color:#888;"></span></h3>
+                <div class="table-responsive">
+                    <div id="review-table"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 用户管理 -->
+        <div id="tab-users" class="tab-content">
+            <div>
+                <h3>👥 用户角色管理</h3>
+                <p style="font-size:13px; color:#888;">角色从低到高：普通用户 → 编辑员 → 审核员 → 管理员。管理员只能修改低于自己的角色，且授予的角色也必须低于管理员（管理员身份不可再授予）；匿名用户（未登录）只能查看统计。</p>
+                <div class="table-responsive">
+                    <div id="users-table"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- 提示消息 -->
         <div id="alert-box" class="alert"></div>
     </div>
     
     <!-- JavaScript Files -->
+    <script src="js/config.js"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/ui-helpers.js"></script>
     <script src="js/data-loader.js"></script>
     <script src="js/data-saver.js"></script>
     <script src="js/stats.js"></script>
     <script src="js/event-config-ui.js"></script>
+    <script src="js/admin.js"></script>
+    <script src="js/profile.js"></script>
     <script>
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', function() {
+            // 未连接数据库前先按匿名身份隐藏受限页面
+            if (typeof applyRoleUI === 'function') applyRoleUI();
+
             // 移动端对 tab 栏触摸滑动支持
             var tabs = document.querySelector('.tabs');
             if (tabs) {

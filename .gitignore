@@ -20,3 +20,10 @@ node_modules/
 成绩录入表.xlsx
 gen_excel.py
 RESPONSIVE_TEST.md
+
+# 本地部署与攻击测试（不入库）
+.local-test/
+权限系统说明.md
+
+cf-workers/纯网页部署手册.md
+cf-workers/部署说明.md

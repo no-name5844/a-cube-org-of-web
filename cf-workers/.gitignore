@@ -1,0 +1,12 @@
+# 生产依赖与构建产物
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+
+# 环境变量文件（含密钥，勿提交）
+.dev.vars
+.dev.vars.production
+
+# 日志
+*.log

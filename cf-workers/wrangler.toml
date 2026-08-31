@@ -1,0 +1,22 @@
+name = "cube-permissions"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# 部署环境：生产
+[env.production]
+vars = { ENV = "production" }
+
+# 每个 Worker 路由独立声明（也可统一在 Cloudflare Dashboard 配路由）
+routes = [
+  { pattern = "api.cube.org/*", env = "production" }
+]
+
+# Worker 需要访问的环境变量（在 Cloudflare Dashboard → Workers → 该 worker → Settings → Variables 中设置）
+# SUPABASE_URL:        你的 Supabase 项目 URL，如 https://xxxx.supabase.co
+# SUPABASE_SERVICE_ROLE_KEY: 你的 Supabase Service Role Key（严格保密，勿下发前端）
+# SUPABASE_ANON_KEY:   你的 Supabase Anon Key
+# 这些变量在代码里通过环境对象读取：env.SUPABASE_URL 等
+
+# 资源限制（按需调整）
+[limits]
+cpu_ms = 1000

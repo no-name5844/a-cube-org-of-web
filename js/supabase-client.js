@@ -30,7 +30,10 @@ async function connectDB() {
         localStorage.setItem('supabase_key', key);
         
         showAlert('✅ 数据库连接成功！', 'success');
-        
+
+        // 初始化登录状态（恢复会话、加载角色、按角色显隐界面）
+        await initAuth();
+
         // 加载所有数据
         await loadAllData();
         
