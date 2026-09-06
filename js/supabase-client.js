@@ -1,68 +1,31 @@
 /**
- * Supabase 客户端初始化
- * 从 config-bar 读取 URL 和 Key，存储到 localStorage
+ * 应用启动（原「连接 Supabase」已移除——浏览器不再持有 URL/Key）
+ * 数据访问与认证全部经 Cloudflare Workers。页面加载即自动：
+ *   1) 探测 Worker 可达性（匿名读公开数据，确认后端就绪）
+ *   2) 恢复本地会话（登录态）
+ *   3) 加载业务数据
  */
-
-var dbClient = null;
 var currentTab = 'competitions';
 
 /**
- * 连接数据库
+ * 应用启动：探测 Worker → 恢复会话 → 加载数据。
+ * 由页面末尾 <script> 调用一次即可。
  */
-async function connectDB() {
-    var url = document.getElementById('supabase-url').value.trim();
-    var key = document.getElementById('supabase-key').value.trim();
-    
-    if (!url || !key) {
-        showAlert('请输入 Supabase URL 和 Anon Key', 'error');
-        return;
-    }
-    
-    try {
-        dbClient = supabase.createClient(url, key);
+async function bootApp() {
+  // 探测 Worker 可用性（读取公开数据走 RLS 匿名通道；匿名用户本就可读 competitions）
+  var reachable = false;
+  try {
+    var { data, error } = await db('competitions').select('id').limit(1);
+    reachable = !error;
+  } catch (e) { reachable = false; }
 
-        // 测试连接：统一走 Cloudflare Workers 的 /api/* 数据代理（浏览器不直连数据表；
-        // dbClient 仅保留给 Supabase Auth 取登录 JWT）。读公开表可匿名，RLS 照常放行。
-        var { data, error } = await db('competitions').select('id').limit(1);
-        if (error) throw error;
+  if (!reachable) {
+    showAlert('⚠️ 无法连接后端服务，请确认 Worker 已部署且可用', 'error');
+    return;
+  }
 
-        // 保存到 localStorage
-        localStorage.setItem('supabase_url', url);
-        localStorage.setItem('supabase_key', key);
-
-        showAlert('✅ 数据库连接成功！', 'success');
-        collapseSetup();   // 连接成功后收起设置条，页头显示「已连接 · 更改」
-
-        // 初始化登录状态（恢复会话、加载角色、按角色显隐界面）
-        await initAuth();
-
-        // 加载所有数据
-        await loadAllData();
-
-    } catch (err) {
-        dbClient = null;
-        console.error('数据库连接失败：', err);
-        showAlert('❌ 连接失败：' + err.message, 'error');
-        openSetup();       // 失败时重新展开设置条，便于修正凭据
-    }
-}
-
-/**
- * 展开数据库连接设置条（供「已连接 · 更改」按钮与连接失败时使用）
- */
-function openSetup() {
-    var bar = document.getElementById('setup-bar');
-    var btn = document.getElementById('btn-reconnect');
-    if (bar) bar.hidden = false;
-    if (btn) btn.hidden = true;
-}
-
-/**
- * 收起数据库连接设置条，改为显示「已连接 · 更改」按钮
- */
-function collapseSetup() {
-    var bar = document.getElementById('setup-bar');
-    var btn = document.getElementById('btn-reconnect');
-    if (bar) bar.hidden = true;
-    if (btn) btn.hidden = false;
+  // 恢复登录态（本地已有会话则作为对应用户，否则匿名）
+  await initAuth();
+  // 加载业务数据
+  await loadAllData();
 }

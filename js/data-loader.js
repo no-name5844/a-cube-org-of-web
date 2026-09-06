@@ -5,7 +5,6 @@
 
 // 加载所有数据
 async function loadAllData() {
-    if (!dbClient) return;
     // 初始化配置模板下拉框（来自本地 EventConfig，不依赖数据库）
     if (typeof initConfigTemplateSelect === 'function') initConfigTemplateSelect();
     await Promise.all([

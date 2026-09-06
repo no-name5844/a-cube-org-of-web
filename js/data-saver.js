@@ -108,7 +108,7 @@ async function addParticipant() {
 
 // 提交成绩
 async function addAttempt() {
-    if (!checkDB()) return;
+    if (!currentUser) { showAlert('请先登录', 'error'); return; }
     // 账号信息完全信任数据库：提交前先从数据库刷新最新角色
     await refreshMyProfile();
     var competitionId = document.getElementById('attempt-competition').value;

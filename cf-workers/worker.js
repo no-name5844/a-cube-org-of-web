@@ -14,6 +14,14 @@
  *   PATCH/DELETE /api/<table>?<筛选> 更新/删除（要求登录 JWT，RLS 生效）
  *   —— 所有请求以调用者 JWT 身份转发到 PostgREST，权限由数据库 RLS 强制。
  *
+ * 认证代理（浏览器不引入 supabase-js、不持有 Supabase URL/Key）：
+ *   POST /api/auth/login     {code,password} → 换 access/refresh token
+ *   POST /api/auth/refresh   {refresh_token} → 刷新 access token
+ *   POST /api/auth/logout    {refresh_token} → 使会话失效
+ *   POST /api/auth/password  Bearer + {new_password} → 修改密码
+ *   GET  /api/auth/user      Bearer → 当前用户信息
+ *   —— 前端持久化 token，并随 /api/* 请求带 Authorization: Bearer <access>。
+ *
  * 环境变量（在 Worker → Settings → Variables 配置）：
  *   SUPABASE_URL              如 https://xxxx.supabase.co
  *   SUPABASE_ANON_KEY        Supabase Anon Key（公开可下发；仅作 apikey 头，权限由 RLS 强制）
@@ -422,6 +430,109 @@ async function apiProxy(request, env) {
   });
 }
 
+// ============ 认证代理（/api/auth/*）============
+// 前端不再引入 supabase-js、不持有任何 Supabase URL/Key。
+// 登录/刷新/登出/改密码/取用户全部经此代理到 Supabase Auth（服务端用 anon key 作 apikey），
+// 成功返回浏览器需要的 access_token / refresh_token，由前端自行持久化并随后续请求发回。
+// 数据面（/api/*、submit/review/assign）仍以调用者 JWT 身份走 RLS，本层不改变数据权限。
+async function authProxy(request, env) {
+  const url = new URL(request.url);
+  const action = url.pathname.slice("/api/auth/".length);
+  const method = request.method;
+  const body = await request.json().catch(() => null);
+
+  // 统一转发到 Supabase Auth
+  const authFetch = async (authPath, payload) => {
+    const resp = await fetch(`${env.SUPABASE_URL}/auth/v1${authPath}`, {
+      method: "POST",
+      headers: {
+        apikey: env.SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const text = await resp.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) {}
+    if (!resp.ok) {
+      const msg = (data && (data.msg || data.error_description || data.message))
+        || `认证失败(${resp.status})`;
+      throw httpError(resp.status === 400 ? 401 : (resp.status || 500), msg);
+    }
+    return data;
+  };
+
+  if (method === "POST") {
+    if (action === "login") {
+      if (!body || typeof body.code !== "string" || typeof body.password !== "string") {
+        throw httpError(400, "缺少 code 或 password");
+      }
+      const code = body.code.trim();
+      if (!/^[A-Za-z0-9_]{1,32}$/.test(code)) {
+        throw httpError(400, "用户ID只能包含字母/数字/下划线，最长32位");
+      }
+      // 登录ID → 确定的 auth email（与建号映射一致）
+      const email = loginCodeToEmail(code);
+      const data = await authFetch("/token?grant_type=password", {
+        email, password: body.password,
+      });
+      return json({ ok: true, ...data });
+    }
+    if (action === "refresh") {
+      if (!body || typeof body.refresh_token !== "string") throw httpError(400, "缺少 refresh_token");
+      const data = await authFetch("/token?grant_type=refresh_token", { refresh_token: body.refresh_token });
+      return json({ ok: true, ...data });
+    }
+    if (action === "logout") {
+      // 使当前 refresh_token 失效（可传 refresh_token 字段）
+      if (body && body.refresh_token) {
+        await authFetch("/logout", { refresh_token: body.refresh_token });
+      }
+      return json({ ok: true });
+    }
+    if (action === "password") {
+      // 改密码：需要登录态（access_token 在 Authorization）
+      const authHeader = request.headers.get("Authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) throw httpError(401, "未登录");
+      if (!body || typeof body.new_password !== "string" || body.new_password.length < 6) {
+        throw httpError(400, "新密码至少6位");
+      }
+      const resp = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        method: "PUT",
+        headers: {
+          apikey: env.SUPABASE_ANON_KEY,
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ password: body.new_password }),
+      });
+      const text = await resp.text();
+      if (!resp.ok) {
+        let d = null; try { d = JSON.parse(text); } catch (_) {}
+        const msg = (d && (d.msg || d.message)) || `修改密码失败(${resp.status})`;
+        throw httpError(resp.status, msg);
+      }
+      return json({ ok: true });
+    }
+  }
+
+  if (action === "user" && method === "GET") {
+    // 用 access_token 换当前用户身份
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) throw httpError(401, "未登录");
+    const resp = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+      method: "GET",
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: authHeader },
+    });
+    const text = await resp.text();
+    if (!resp.ok) throw httpError(401, "身份验证失败");
+    const user = JSON.parse(text);
+    return json(user);
+  }
+
+  throw httpError(404, "未知认证端点");
+}
+
 // ============ 主入口：路由 ============
 export default {
   async fetch(request, env) {
@@ -434,6 +545,8 @@ export default {
     const path = url.pathname.replace(/\/+$/, "");
 
     try {
+      // 认证代理：/api/auth/<action>（login/refresh/logout/user/password）
+      if (path.startsWith("/api/auth/")) return await authProxy(request, env);
       // 通用数据代理：所有业务表 CRUD 经此转发到 PostgREST（RLS 在库层强制）
       if (path.startsWith("/api/")) return await apiProxy(request, env);
 

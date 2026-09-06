@@ -7,7 +7,7 @@ var myAttemptsTable = null;
 
 // 加载我的档案（登录后由 applyRoleUI 触发）
 async function loadMyProfile() {
-    if (!dbClient || !currentUser) return;
+    if (!currentUser) return;
 
     // 1. 刷新最新 profile（防止别处改动后过期）
     var { data: profile } = await db('profiles')
@@ -31,7 +31,7 @@ async function loadMyProfile() {
 
 // 我的比赛记录：自己提交过的所有成绩，按比赛分组展示
 async function loadMyAttempts() {
-    if (!dbClient || !currentProfile) return;
+    if (!currentProfile) return;
     var { data, error } = await db('attempts')
         .select('*, participants(name), competition_events(competitions(id, name, competition_date), events(event_name))')
         .eq('submitted_by', currentProfile.id)
@@ -94,7 +94,7 @@ async function loadMyAttempts() {
 
 // 保存昵称
 async function saveNickname() {
-    if (!checkDB() || !currentUser) { showAlert('请先登录', 'error'); return; }
+    if (!currentUser) { showAlert('请先登录', 'error'); return; }
     var nickname = document.getElementById('my-nickname').value.trim();
     if (!nickname) { showAlert('昵称不能为空', 'error'); return; }
 
@@ -110,12 +110,13 @@ async function saveNickname() {
 
 // 修改密码
 async function changeMyPassword() {
-    if (!checkDB() || !currentUser) { showAlert('请先登录', 'error'); return; }
+    if (!currentUser) { showAlert('请先登录', 'error'); return; }
     var newPwd = document.getElementById('my-new-password').value;
     if (!newPwd || newPwd.length < 6) { showAlert('新密码至少 6 位', 'error'); return; }
 
-    var { error } = await dbClient.auth.updateUser({ password: newPwd });
-    if (error) { showAlert('修改密码失败：' + error.message, 'error'); return; }
+    // 改密码经 Worker /api/auth/password（服务端带登录 JWT 调 Supabase Auth）
+    var res = await callWorker('/api/auth/password', { new_password: newPwd });
+    if (!res.ok) { showAlert('修改密码失败：' + (res.error && res.error.message ? res.error.message : '请确认已登录'), 'error'); return; }
     document.getElementById('my-new-password').value = '';
     showAlert('✅ 密码已修改', 'success');
 }

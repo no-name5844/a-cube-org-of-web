@@ -86,11 +86,12 @@ function toggleEventAlgoFields() {
     if (trim) trim.hidden = (sel.value !== 'average');
 }
 
-/* ---------------- 数据库状态 ---------------- */
+/* ---------------- 登录守卫（写操作前提：已登录，服务端再验角色） ---------------- */
 
 function checkDB() {
-    if (!dbClient) {
-        showAlert('⚠️ 请先连接数据库', 'error');
+    // 已无「连接数据库」步骤；数据经 Worker /api/*。写操作需登录，这里统一拦未登录。
+    if (!currentUser) {
+        showAlert('⚠️ 请先登录', 'error');
         return false;
     }
     return true;

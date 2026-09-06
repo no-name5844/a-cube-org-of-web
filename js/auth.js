@@ -26,86 +26,88 @@ function isEditorOrAbove() { return roleAtLeast('editor'); }
 function isReviewerOrAbove() { return roleAtLeast('reviewer'); }
 function isAdmin() { return currentRole === 'admin'; }
 
-// ---- 初始化（在 connectDB 成功后调用）----
+// ---- 初始化（connectDB 探测 worker 成功后调用）----
 async function initAuth() {
-    if (!dbClient) return;
+  // 从本地会话恢复登录态（token 经 Worker /api/auth/* 取得并持久化）
+  await setAuthUser(session.user() || null);
 
-    var { data } = await dbClient.auth.getSession();
-    if (data && data.session && data.session.user) {
-        await setAuthUser(data.session.user);
-    } else {
-        setAuthUser(null);
-    }
-
-    // 监听登录状态变化（含 token 刷新、登出）
-    dbClient.auth.onAuthStateChange(function (_event, session) {
-        setAuthUser(session ? session.user : null);
-    });
-
-    // 账号信息完全信任数据库：窗口聚焦时同步一次
-    window.addEventListener('focus', refreshMyProfile);
-    // 并每 60 秒从数据库同步一次角色/资料（管理员改角色无需重新登录即生效）
-    setInterval(refreshMyProfile, 60000);
+  // 账号信息完全信任数据库：窗口聚焦时同步一次
+  window.addEventListener('focus', refreshMyProfile);
+  // 并每 60 秒从数据库同步一次角色/资料（管理员改角色无需重新登录即生效）
+  setInterval(refreshMyProfile, 60000);
 }
 
 // 从数据库重新读取当前用户的资料与角色（数据库是唯一可信来源）
 async function refreshMyProfile() {
-    if (!dbClient || !currentUser) return;
-    var { data: profile, error } = await db('profiles')
-        .select('*')
-        .eq('id', currentUser.id)
-        .maybeSingle();
-    if (error || !profile) return;
+  if (!currentUser) return;
+  var { data: profile, error } = await db('profiles')
+    .select('*')
+    .eq('id', currentUser.id)
+    .maybeSingle();
+  if (error || !profile) return;
 
-    var roleChanged = profile.role !== currentRole;
-    currentProfile = profile;
-    currentRole = profile.role || 'user';
-    renderAuthUI();
-    if (roleChanged) applyRoleUI();
+  var roleChanged = profile.role !== currentRole;
+  currentProfile = profile;
+  currentRole = profile.role || 'user';
+  renderAuthUI();
+  if (roleChanged) applyRoleUI();
 }
 
 // 设置当前用户并加载角色
 async function setAuthUser(user) {
-    currentUser = user;
-    currentProfile = null;
-    currentRole = 'anon';
+  currentUser = user;
+  currentProfile = null;
+  currentRole = 'anon';
 
-    if (user && dbClient) {
-        var { data: profile, error } = await db('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .maybeSingle();
-        if (!error && profile) {
-            currentProfile = profile;
-            currentRole = profile.role || 'user';
-        } else {
-            // profile 尚未由触发器创建（或读取失败），按普通用户对待
-            currentRole = 'user';
-        }
+  if (user) {
+    var { data: profile, error } = await db('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (!error && profile) {
+      currentProfile = profile;
+      currentRole = profile.role || 'user';
+    } else {
+      // profile 尚未由触发器创建（或读取失败），按普通用户对待
+      currentRole = 'user';
     }
+  }
 
-    renderAuthUI();
-    applyRoleUI();
+  renderAuthUI();
+  applyRoleUI();
 }
 
-// ---- 登录 / 注册 / 登出 ----
+// ---- 登录 / 登出 ----
 async function signIn() {
-    if (!checkDB()) return;
-    var code = document.getElementById('auth-code').value.trim();
-    var password = document.getElementById('auth-password').value;
-    if (!code || !password) { showAlert('请输入用户ID和密码', 'error'); return; }
-    // 登录ID → 确定的 auth email（与 worker 建号时的映射 code@cube.local 一致）
-    var email = code + '@cube.local';
+  var code = document.getElementById('auth-code').value.trim();
+  var password = document.getElementById('auth-password').value;
+  if (!code || !password) { showAlert('请输入用户ID和密码', 'error'); return; }
 
-    var { error } = await dbClient.auth.signInWithPassword({ email: email, password: password });
-    if (error) { showAlert('登录失败：' + error.message, 'error'); return; }
-    showAlert('✅ 登录成功！', 'success');
+  // 登录经 Worker /api/auth/login（code → code@cube.local 映射在服务端完成）
+  var res = await callWorkerAuth('login', { code: code, password: password }, true);
+  if (!res.ok) {
+    showAlert('登录失败：' + (res.error && res.error.message ? res.error.message : '请检查ID和密码'), 'error');
+    return;
+  }
+  if (!res.data || !res.data.access_token) {
+    showAlert('登录失败：未取得会话', 'error');
+    return;
+  }
+  session.set(res.data);
+  await setAuthUser(session.user());
+  showAlert('✅ 登录成功！', 'success');
 }
 
 async function signOutNow() {
-    if (!dbClient) return;
-    await dbClient.auth.signOut();
-    showAlert('已退出登录，当前为匿名用户', 'info');
+  var storedRefresh = localStorage.getItem('wb_refresh');
+  if (storedRefresh) await callWorkerAuth('logout', { refresh_token: storedRefresh }, true);
+  session.clear();
+  currentUser = null;
+  currentProfile = null;
+  currentRole = 'anon';
+  renderAuthUI();
+  applyRoleUI();
+  showAlert('已退出登录，当前为匿名用户', 'info');
 }
 
 // ---- 渲染 ----
@@ -139,10 +141,8 @@ function applyRoleUI() {
         var need = ROLE_RANK[el.getAttribute('data-minrole')] || 0;
         el.style.display = (rank >= need) ? '' : 'none';
     });
-    // 权限足够时才刷新对应数据
-    if (dbClient) {
-        if (rank >= ROLE_RANK.user && typeof loadMyProfile === 'function') loadMyProfile();
-        if (isReviewerOrAbove() && typeof loadPendingAttempts === 'function') loadPendingAttempts();
-        if (isAdmin() && typeof loadProfiles === 'function') loadProfiles();
-    }
+    // 权限足够时才刷新对应数据（数据经 Worker /api/*，无需连接态即可匿名读公开数据）
+    if (rank >= ROLE_RANK.user && typeof loadMyProfile === 'function') loadMyProfile();
+    if (isReviewerOrAbove() && typeof loadPendingAttempts === 'function') loadPendingAttempts();
+    if (isAdmin() && typeof loadProfiles === 'function') loadProfiles();
 }

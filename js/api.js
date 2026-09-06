@@ -3,8 +3,9 @@
  * 浏览器不再直连 Supabase 数据表——所有表的读取/增删改都经过 Worker，
  * 由数据库 RLS 在库层强制权限。
  *
- * 浏览器只保留 Supabase Auth（dbClient.auth）用于获取登录 JWT；
- * 拿到 JWT 后随请求发给 Worker，Worker 以调用者身份转发到 PostgREST。
+ * 登录 JWT 由本地会话层（session.js + config.js）管理——登录经 Worker 的
+ * /api/auth/* 换取 access token；数据访问随请求带 Authorization 发给 Worker，
+ * Worker 以调用者身份转发到 PostgREST，由 RLS 在库层强制权限。
  *
  * 设计：db(table) 返回链式构建器，语法尽量对齐 supabase-js，便于从
  *   dbClient.from('t').select('*').order('c')
@@ -14,16 +15,14 @@
  */
 
 /**
- * 从当前会话取登录 JWT（仅用于发给 Worker；不直接用于数据访问）
+ * 从本地会话取登录 JWT（仅用于发给 Worker；token 由 config/session 层管理）。
+ * 返回空串 = 匿名（读公开数据仍可走 Worker 匿名通道）。
  */
 async function getApiToken() {
   try {
-    var session = await dbClient.auth.getSession();
-    if (session && session.data && session.data.session) {
-      return session.data.session.access_token || "";
-    }
-  } catch (e) { /* 未连接时返回空，读公开数据仍可走 Worker 匿名通道 */ }
-  return "";
+    var token = await authToken();
+    return token || "";
+  } catch (e) { return ""; }
 }
 
 /**
@@ -35,7 +34,7 @@ async function getApiToken() {
  */
 async function apiFetch(method, restPath, body) {
   var token = await getApiToken();
-  var headers = { "Content-Type": "application/json", "apikey": getAnonKey() };
+  var headers = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = "Bearer " + token;
   if (body !== undefined) headers["Prefer"] = "return=representation";
 

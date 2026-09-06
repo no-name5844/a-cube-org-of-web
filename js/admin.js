@@ -12,7 +12,7 @@ var usersTable = null;
 
 // 加载待审核成绩
 async function loadPendingAttempts() {
-    if (!dbClient || !isReviewerOrAbove()) return;
+    if (!isReviewerOrAbove()) return;
     var { data, error } = await db('attempts')
         .select('*, participants(name), competition_events(competitions(name), events(event_name))')
         .eq('status', 'pending')
@@ -54,7 +54,7 @@ async function loadPendingAttempts() {
 
 // 审核成绩：强制走 Cloudflare Workers review-attempt（服务端验身份、定审核人，前端无法伪造）
 async function reviewAttempt(attemptId, status) {
-    if (!checkDB()) return;
+    if (!currentUser) { showAlert('请先登录', 'error'); return; }
     var action = status === 'approved' ? 'approve' : 'reject';
     var res = await callWorker('/review-attempt', { attemptId: attemptId, action: action });
     if (!res.ok) { showAlert('审核操作失败：' + (res.error.message || '请确认已登录且具备审核权限'), 'error'); return; }
@@ -69,7 +69,7 @@ async function reviewAttempt(attemptId, status) {
 
 // 加载用户列表
 async function loadProfiles() {
-    if (!dbClient || !isAdmin()) return;
+    if (!isAdmin()) return;
     var { data, error } = await db('profiles')
         .select('*')
         .order('created_at', { ascending: true });
@@ -112,7 +112,7 @@ async function loadProfiles() {
 var ASSIGNABLE_ROLES = ['user', 'editor', 'reviewer'];
 
 async function changeUserRole(userId, newRole) {
-    if (!checkDB()) return;
+    if (!isAdmin()) { showAlert('需要管理员权限', 'error'); return; }
     if (ASSIGNABLE_ROLES.indexOf(newRole) === -1) {
         showAlert('不能授予管理员及以上角色', 'error');
         loadProfiles();
@@ -127,7 +127,7 @@ async function changeUserRole(userId, newRole) {
 
 // 管理员创建账号（ID + 初始密码 + 角色 + 昵称），走 worker 的 admin-create-user
 async function createAccount() {
-    if (!checkDB()) return;
+    if (!currentUser) { showAlert('请先登录', 'error'); return; }
     if (!isAdmin()) { showAlert('需要管理员权限', 'error'); return; }
     var code = document.getElementById('new-user-code').value.trim();
     var password = document.getElementById('new-user-password').value;

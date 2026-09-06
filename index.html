@@ -7,9 +7,6 @@
 
     <link rel="stylesheet" href="css/style.css">
 
-    <!-- Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
     <!-- Tabulator -->
     <link href="https://unpkg.com/tabulator-tables@5.6.0/dist/css/tabulator_materialize.min.css" rel="stylesheet">
     <script src="https://unpkg.com/tabulator-tables@5.6.0/dist/js/tabulator.min.js"></script>
@@ -30,24 +27,7 @@
                 <p class="app__subtitle">层级项目 · 算法配置 · 分级权限</p>
             </div>
         </div>
-        <button id="btn-reconnect" class="chip" hidden onclick="openSetup()">🔗 已连接 · 更改</button>
     </header>
-
-    <!-- ============ 数据库连接（连接后折叠） ============ -->
-    <section class="setup" id="setup-bar">
-        <p class="setup__hint">首次使用请先连接 Supabase 数据库；凭据只保存在本机浏览器，不会上传到任何第三方。</p>
-        <div class="setup__row">
-            <div class="field field--grow">
-                <label for="supabase-url">Supabase URL</label>
-                <input class="input" type="url" id="supabase-url" placeholder="https://xxxx.supabase.co" autocomplete="off" spellcheck="false">
-            </div>
-            <div class="field field--grow">
-                <label for="supabase-key">Anon Key</label>
-                <input class="input" type="password" id="supabase-key" placeholder="eyJhbGciOi..." autocomplete="off" spellcheck="false">
-            </div>
-            <button class="btn" onclick="guard(this, connectDB)">🔗 连接数据库</button>
-        </div>
-    </section>
 
     <!-- ============ 身份条 ============ -->
     <section class="auth">
@@ -516,6 +496,7 @@
 
 <!-- ============ 脚本 ============ -->
 <script src="js/config.js"></script>
+<script src="js/session.js"></script>
 <script src="js/api.js"></script>
 <script src="js/supabase-client.js"></script>
 <script src="js/auth.js"></script>
@@ -526,12 +507,8 @@
 <script src="js/admin.js"></script>
 <script src="js/profile.js"></script>
 <script>
-    // 记住上次连接信息并自动重连
-    if (localStorage.getItem('supabase_url') && localStorage.getItem('supabase_key')) {
-        document.getElementById('supabase-url').value = localStorage.getItem('supabase_url');
-        document.getElementById('supabase-key').value = localStorage.getItem('supabase_key');
-        connectDB();
-    }
+    // 应用启动：探测 Worker → 恢复会话 → 加载数据（已无手动「连接数据库」步骤）
+    bootApp();
 </script>
 </body>
 </html>
