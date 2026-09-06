@@ -955,6 +955,7 @@ var EventConfig = (function() {
     return {
         schema: schema,
         templates: templates,
+        defaults: fillDefaults({}, 'event'),
         getTemplateList: getTemplateList,
         applyTemplate: applyTemplate,
         fillDefaults: fillDefaults,

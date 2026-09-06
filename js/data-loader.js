@@ -6,14 +6,28 @@
 // 加载所有数据
 async function loadAllData() {
     if (!dbClient) return;
+    // 初始化配置模板下拉框（来自本地 EventConfig，不依赖数据库）
+    if (typeof initConfigTemplateSelect === 'function') initConfigTemplateSelect();
     await Promise.all([
         loadCompetitions(),
         loadEvents(),
         loadParticipants(),
         loadCompetitionsForSelect('view-competition'),
         loadCompetitionsForSelect('attempt-competition'),
-        loadParticipantsForSelect('stats-participant')
+        loadEventsForSelect('config-event'),
+        loadParticipantsForSelect('attempt-participant'),
+        loadParentEvents(),
+        loadRecentAttempts()
     ]);
+}
+
+// 选择比赛后联动刷新「项目」下拉（成绩录入 / 成绩查询）
+function loadCompetitionEventsForAttempt() {
+    loadCompetitionEvents(document.getElementById('attempt-competition').value, 'attempt-event');
+}
+
+function loadCompetitionEventsForView() {
+    loadCompetitionEvents(document.getElementById('view-competition').value, 'view-event');
 }
 
 // 加载比赛列表
@@ -36,6 +50,7 @@ async function loadCompetitions() {
         layout: 'fitColumns',
         rowHeight: 26,
         headerHeight: 28,
+        placeholder: TABLE_EMPTY,
         columns: columns
     });
     loadCompetitionsForSelect('config-competition');
@@ -86,9 +101,10 @@ async function loadEvents() {
     eventsTable = new Tabulator('#events-table', {
         data: data,
         layout: 'fitDataFill',
-        maxHeight: 160,
+        maxHeight: 360,
         rowHeight: 26,
         headerHeight: 28,
+        placeholder: TABLE_EMPTY,
         columns: [
             {
                 title: '项目代码',
@@ -206,6 +222,7 @@ async function loadParticipants() {
         layout: 'fitColumns',
         rowHeight: 26,
         headerHeight: 28,
+        placeholder: TABLE_EMPTY,
         columns: [
             { title: '名称', field: 'name' },
             { title: 'WCA ID', field: 'wca_id' },
@@ -250,6 +267,7 @@ async function loadRecentAttempts() {
         layout: 'fitColumns',
         rowHeight: 26,
         headerHeight: 28,
+        placeholder: TABLE_EMPTY,
         columns: [
             { title: '选手', field: 'participants.name' },
             { title: '项目', field: 'competition_events.events.event_name' },
@@ -269,12 +287,41 @@ async function loadRecentAttempts() {
     });
 }
 
+// 渲染查询摘要（有效成绩数 / 最快 / 平均）
+function renderStatsSummary(rows) {
+    var box = document.getElementById('stats-summary');
+    if (!box) return;
+
+    var all = rows || [];
+    // 有效成绩：非 DNF / DNS，且时间为正数；+2 已计入
+    var times = all.filter(function (r) {
+        return !r.is_dnf && !r.is_dns && typeof r.solve_time === 'number' && r.solve_time > 0;
+    }).map(function (r) {
+        return r.solve_time + (r.is_plus_two ? 2 : 0);
+    });
+
+    var best = times.length ? Math.min.apply(null, times) : null;
+    var avg = times.length ? times.reduce(function (a, b) { return a + b; }, 0) / times.length : null;
+    var fmt = function (v) { return v == null ? '—' : v.toFixed(3) + 's'; };
+
+    box.innerHTML = [
+        { label: '有效成绩', value: times.length + ' / ' + all.length },
+        { label: '最快', value: fmt(best) },
+        { label: '平均', value: fmt(avg) }
+    ].map(function (c) {
+        return '<div class="stat"><div class="stat__label">' + escHtml(c.label) + '</div>' +
+               '<div class="stat__value">' + escHtml(c.value) + '</div></div>';
+    }).join('');
+}
+
 // 加载查看数据
 async function loadViewData() {
     var competitionId = document.getElementById('view-competition').value;
     var eventId = document.getElementById('view-event').value;
     if (!competitionId || !eventId) {
-        document.getElementById('view-table').innerHTML = '<p class="loading">请选择比赛和项目</p>';
+        if (viewTable) { viewTable.destroy(); viewTable = null; }
+        renderStatsSummary([]);
+        document.getElementById('view-table').innerHTML = '<p class="empty">请先选择比赛和项目</p>';
         return;
     }
     
@@ -297,11 +344,13 @@ async function loadViewData() {
     if (error) { showAlert('加载数据失败：' + error.message, 'error'); return; }
     
     if (viewTable) viewTable.destroy();
+    renderStatsSummary(data);
     viewTable = new Tabulator('#view-table', {
         data: data,
         layout: 'fitColumns',
         rowHeight: 26,
         headerHeight: 28,
+        placeholder: '该项目暂无已通过审核的成绩',
         columns: [
             { title: '选手', field: 'participants.name' },
             { title: '次数', field: 'attempt_number', width: 80 },
@@ -350,79 +399,5 @@ async function loadParentEvents() {
     sel.innerHTML = '<option value="">-- 顶级项目（无父项目）--</option>';
     (data || []).forEach(function(e) {
         sel.innerHTML += '<option value="' + e.id + '">' + escHtml(e.event_code) + ' - ' + escHtml(e.event_name) + '</option>';
-    });
-}
-
-// 加载层级项目列表
-async function loadEventsHierarchical() {
-    var { data, error } = await dbClient
-        .from('events')
-        .select('*, parent:parent_event_id(event_code, event_name)')
-        .order('parent_event_id', { ascending: true })
-        .order('sort_order', { ascending: true });
-    
-    if (error) {
-        showAlert('加载项目失败：' + error.message, 'error');
-        return;
-    }
-    
-    if (eventsTable) eventsTable.destroy();
-    
-    eventsTable = new Tabulator('#events-table', {
-        data: data,
-        layout: 'fitDataFill',
-        maxHeight: 160,
-        rowHeight: 26,
-        headerHeight: 28,
-        columns: [
-            {
-                title: '项目代码',
-                field: 'event_code',
-                width: 110,
-                formatter: function(cell) {
-                    var row = cell.getRow().getData();
-                    if (row.parent_event_id) {
-                        return '  ↳ ' + cell.getValue();
-                    }
-                    return cell.getValue();
-                }
-            },
-            {
-                title: '项目名称',
-                field: 'event_name',
-                formatter: function(cell) {
-                    var row = cell.getRow().getData();
-                    if (row.parent_event_id) {
-                        return '<span style="color: #667eea;">' + cell.getValue() + '</span>';
-                    }
-                    return '<strong>' + cell.getValue() + '</strong>';
-                }
-            },
-            {
-                title: '父项目',
-                field: 'parent',
-                width: 140,
-                formatter: function(cell) {
-                    var parent = cell.getValue();
-                    if (parent) {
-                        return parent.event_code + ' - ' + parent.event_name;
-                    }
-                    return '<span style="color:#999;font-size:12px;">顶级</span>';
-                }
-            },
-            { title: '描述', field: 'description', width: 160 },
-            {
-                title: '算法',
-                field: 'algorithm_config',
-                width: 80,
-                formatter: function(cell) {
-                    var config = cell.getValue();
-                    if (config && config.algorithm_type) {
-                        return config.algorithm_type;
-                    }
-                    return '-';
-                }
-            }
-        ]
     });
 }

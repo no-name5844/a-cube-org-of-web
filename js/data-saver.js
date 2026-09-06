@@ -62,14 +62,19 @@ async function addEvent() {
     
     var algoType = document.getElementById('event-algo-type') ? 
         document.getElementById('event-algo-type').value : 'single';
+    var isLower = document.getElementById('event-is-lower-better') ?
+        document.getElementById('event-is-lower-better').value === 'true' : true;
+    var trimCount = document.getElementById('event-trim-count') ?
+        (parseInt(document.getElementById('event-trim-count').value) || 0) : 0;
     var algoConfig = {
         algorithm_type: algoType,
-        is_lower_better: true,
-        trim_count: algoType === 'average' ? 1 : 0
+        is_lower_better: isLower,
+        trim_count: trimCount
     };
-    var windowSize = document.getElementById('event-window-size') ? 
-        document.getElementById('event-window-size').value : null;
-    if (windowSize) algoConfig.window_size = parseInt(windowSize);
+    var windowSizeEl = document.getElementById('event-window-size');
+    if (windowSizeEl && windowSizeEl.value) {
+        algoConfig.window_size = parseInt(windowSizeEl.value);
+    }
     
     var { error } = await dbClient.from('events').insert({
         event_code: code,
