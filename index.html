@@ -15,8 +15,7 @@
     <link href="https://unpkg.com/tabulator-tables@5.6.0/dist/css/tabulator_materialize.min.css" rel="stylesheet">
     <script src="https://unpkg.com/tabulator-tables@5.6.0/dist/js/tabulator.min.js"></script>
     
-    <!-- Chart.js for Gamma distribution chart -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <!-- Chart.js 已移除（Gamma 分布图功能删除） -->
     
     <!-- Event Config Definition -->
     <script src="event-config.js"></script>
@@ -25,7 +24,7 @@
     <div class="container">
         <div class="header">
             <h1>🎲 魔方比赛成绩管理系统</h1>
-            <p>v5 - 层级项目 · 算法配置 · Gamma MLE 预测</p>
+            <p>v5 - 层级项目 · 算法配置</p>
         </div>
         
         <div class="config-bar">
@@ -38,10 +37,9 @@
         <div class="auth-bar">
             <div id="auth-login-form" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <span style="font-size:13px; color:#666;">当前身份：<strong>匿名用户</strong>（只读）</span>
-                <input type="email" id="auth-email" placeholder="邮箱" style="max-width:200px;" />
+                <input type="text" id="auth-code" placeholder="用户ID" style="max-width:200px;" />
                 <input type="password" id="auth-password" placeholder="密码" style="max-width:160px;" />
                 <button class="btn" style="padding:8px 14px;" onclick="signIn()">登录</button>
-                <button class="btn btn-success" style="padding:8px 14px;" onclick="signUp()">注册</button>
             </div>
             <div id="auth-user-info" style="display:none; gap:10px; align-items:center; flex-wrap:wrap;">
                 <span>👋 <strong id="auth-user-name"></strong></span>
@@ -300,23 +298,9 @@
                         <select id="view-event"></select>
                     </div>
                     <button class="btn btn-success" onclick="loadViewData()">📊 加载数据</button>
-                    <hr style="margin: 20px 0; border: none; border-top: 1px solid #e9ecef;">
-                    <h3>Gamma MLE 预测</h3>
-                    <div class="form-group">
-                        <label>选择选手</label>
-                        <select id="mle-participant"></select>
-                    </div>
-                    <div class="form-group">
-                        <label>选择项目</label>
-                        <select id="mle-event"></select>
-                    </div>
-                    <button class="btn" onclick="loadStats()">📈 计算预测</button>
                 </div>
                 <div>
                     <div id="stats-display"></div>
-                    <div class="chart-container">
-                        <canvas id="gamma-chart"></canvas>
-                    </div>
                     <div id="view-table-container"></div>
                 </div>
             </div>
@@ -368,6 +352,36 @@
             <div>
                 <h3>👥 用户角色管理</h3>
                 <p style="font-size:13px; color:#888;">角色从低到高：普通用户 → 编辑员 → 审核员 → 管理员。管理员只能修改低于自己的角色，且授予的角色也必须低于管理员（管理员身份不可再授予）；匿名用户（未登录）只能查看统计。</p>
+                <div style="border:1px solid #dee2e6; border-radius:10px; padding:16px; background:#fafbfc; margin:16px 0;">
+                    <h4 style="margin-top:0;">➕ 创建账号（仅管理员）</h4>
+                    <div class="grid">
+                        <div>
+                            <div class="form-group">
+                                <label>用户ID（登录用，字母/数字/下划线，≤32位）</label>
+                                <input type="text" id="new-user-code" placeholder="如 U000123 或 自定义ID" />
+                            </div>
+                            <div class="form-group">
+                                <label>初始密码（至少6位）</label>
+                                <input type="password" id="new-user-password" placeholder="至少6位" />
+                            </div>
+                        </div>
+                        <div>
+                            <div class="form-group">
+                                <label>昵称</label>
+                                <input type="text" id="new-user-nickname" placeholder="显示名" />
+                            </div>
+                            <div class="form-group">
+                                <label>角色</label>
+                                <select id="new-user-role">
+                                    <option value="user">普通用户</option>
+                                    <option value="editor">编辑员</option>
+                                    <option value="reviewer">审核员</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-success" style="margin-top:18px;" onclick="createAccount()">➕ 创建账号</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="table-responsive">
                     <div id="users-table"></div>
                 </div>
@@ -385,7 +399,7 @@
     <script src="js/ui-helpers.js"></script>
     <script src="js/data-loader.js"></script>
     <script src="js/data-saver.js"></script>
-    <script src="js/stats.js"></script>
+    <!-- stats.js 已移除：Gamma MLE 逻辑删除，基础统计见 data-loader.js 的 loadViewData() -->
     <script src="js/event-config-ui.js"></script>
     <script src="js/admin.js"></script>
     <script src="js/profile.js"></script>

@@ -126,3 +126,22 @@ async function changeUserRole(userId, newRole) {
     showAlert('✅ 角色已更新为「' + (ROLE_LABELS[newRole] || newRole) + '」', 'success');
     loadProfiles();
 }
+
+// 管理员创建账号（ID + 初始密码 + 角色 + 昵称），走 worker 的 admin-create-user
+async function createAccount() {
+    if (!checkDB()) return;
+    if (!isAdmin()) { showAlert('需要管理员权限', 'error'); return; }
+    var code = document.getElementById('new-user-code').value.trim();
+    var password = document.getElementById('new-user-password').value;
+    var nickname = document.getElementById('new-user-nickname').value.trim();
+    var role = document.getElementById('new-user-role').value;
+    if (!code || !password) { showAlert('用户ID和初始密码必填', 'error'); return; }
+
+    var res = await callWorker('/admin-create-user', {
+        user_code: code, password: password, nickname: nickname, role: role
+    });
+    if (!res.ok) { showAlert('创建失败：' + (res.error && res.error.message ? res.error.message : '未知错误'), 'error'); return; }
+    showAlert('✅ 账号「' + code + '」已创建（角色：' + (ROLE_LABELS[role] || role) + '）', 'success');
+    document.getElementById('new-user-password').value = '';
+    loadProfiles();
+}

@@ -93,29 +93,15 @@ async function setAuthUser(user) {
 // ---- 登录 / 注册 / 登出 ----
 async function signIn() {
     if (!checkDB()) return;
-    var email = document.getElementById('auth-email').value.trim();
+    var code = document.getElementById('auth-code').value.trim();
     var password = document.getElementById('auth-password').value;
-    if (!email || !password) { showAlert('请输入邮箱和密码', 'error'); return; }
+    if (!code || !password) { showAlert('请输入用户ID和密码', 'error'); return; }
+    // 登录ID → 确定的 auth email（与 worker 建号时的映射 code@cube.local 一致）
+    var email = code + '@cube.local';
 
     var { error } = await dbClient.auth.signInWithPassword({ email: email, password: password });
     if (error) { showAlert('登录失败：' + error.message, 'error'); return; }
     showAlert('✅ 登录成功！', 'success');
-}
-
-async function signUp() {
-    if (!checkDB()) return;
-    var email = document.getElementById('auth-email').value.trim();
-    var password = document.getElementById('auth-password').value;
-    if (!email || !password) { showAlert('请输入邮箱和密码', 'error'); return; }
-    if (password.length < 6) { showAlert('密码至少 6 位', 'error'); return; }
-
-    var { data, error } = await dbClient.auth.signUp({ email: email, password: password });
-    if (error) { showAlert('注册失败：' + error.message, 'error'); return; }
-    if (data.session) {
-        showAlert('✅ 注册成功，已自动登录！', 'success');
-    } else {
-        showAlert('📧 注册成功！请到邮箱确认后再登录', 'info');
-    }
 }
 
 async function signOutNow() {
@@ -133,9 +119,8 @@ function renderAuthUI() {
     if (currentUser) {
         loginForm.style.display = 'none';
         userInfo.style.display = 'flex';
-        var name = (currentProfile && currentProfile.username) ||
-                   currentUser.email || '用户';
-        // 展示专属用户 ID（如 U000001）
+        var name = (currentProfile && (currentProfile.username || currentProfile.user_code)) || '用户';
+        // 展示专属用户 ID（如 U000001）；不再回退到内部 email（code@cube.local）
         if (currentProfile && currentProfile.user_code) {
             name += '（ID: ' + currentProfile.user_code + '）';
         }
