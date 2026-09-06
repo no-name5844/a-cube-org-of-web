@@ -8,8 +8,7 @@ async function loadEventConfigToForm() {
     var eventId = document.getElementById('config-event-select').value;
     if (!eventId) return;
     
-    var { data, error } = await dbClient
-        .from('events')
+    var { data, error } = await db('events')
         .select('event_config, algorithm_config')
         .eq('id', eventId)
         .single();
@@ -38,8 +37,7 @@ async function saveConfigFromForm() {
     var eventConfig = getEventConfigFromForm();
     var algoConfig = getAlgoConfigFromForm();
     
-    var { error } = await dbClient
-        .from('events')
+    var { error } = await db('events')
         .update({
             event_config: eventConfig,
             algorithm_config: algoConfig

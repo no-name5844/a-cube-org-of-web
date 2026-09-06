@@ -1,10 +1,75 @@
 -- ============================================
--- schema.sql
+-- schema.sql（自包含部署脚本，可直接在空 Supabase 项目执行一次）
 -- 权限系统升级：五个角色
 --   匿名用户（未登录）→ 普通用户(user) → 编辑员(editor) → 审核员(reviewer) → 管理员(admin)
--- 基于 schema-v4.sql 的表结构（attempts / events / competition_events 等）
--- 在 Supabase SQL Editor 中完整执行一次即可
+-- 已改为「自包含」：先建基础业务表（attempts/competitions/events/competition_events/participants），
+-- 再叠加 profiles 与角色/RLS 层。所有 CREATE TABLE 用 IF NOT EXISTS，可重复执行、与已部署库兼容。
 -- ============================================
+
+-- ============================================
+-- 0. 基础业务表（base tables）
+-- 列定义取自前端真实读写字段（data-saver.js / data-loader.js / worker.js）。
+-- 旧版冗余表 event_algorithms / statistics_definitions / mle_predictions /
+-- participant_statistics（Gamma MLE + 算法配置遗留）已不再创建；
+-- 若库中仍有这些表，请用 db-cleanup.sql 单独 DROP。
+-- ============================================
+CREATE TABLE IF NOT EXISTS competitions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    competition_number INT,
+    name TEXT NOT NULL,
+    competition_date DATE,
+    location TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_code TEXT,
+    event_name TEXT,
+    description TEXT,
+    parent_event_id UUID REFERENCES events(id) ON DELETE SET NULL,
+    is_sub_event BOOLEAN DEFAULT FALSE,
+    event_config JSONB DEFAULT '{}'::jsonb,
+    algorithm_config JSONB DEFAULT '{}'::jsonb,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS competition_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    competition_id UUID REFERENCES competitions(id) ON DELETE CASCADE,
+    event_id UUID REFERENCES events(id) ON DELETE CASCADE,
+    event_number INT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS participants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    wca_id TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS attempts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    competition_event_id UUID REFERENCES competition_events(id) ON DELETE CASCADE,
+    participant_id UUID REFERENCES participants(id) ON DELETE CASCADE,
+    attempt_number TEXT,
+    solve_time DECIMAL(10,3),
+    cube_type TEXT,
+    scramble TEXT,
+    move_count INT,
+    tps DECIMAL(10,3),
+    solve_steps TEXT,
+    step_comments TEXT,
+    is_dnf BOOLEAN DEFAULT FALSE,
+    is_plus_two BOOLEAN DEFAULT FALSE,
+    is_dns BOOLEAN DEFAULT FALSE,
+    video_url TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ============================================
 -- 1. profiles 表：用户资料与角色
@@ -18,8 +83,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     username TEXT,
     role TEXT NOT NULL DEFAULT 'user'
         CHECK (role IN ('user', 'editor', 'reviewer', 'admin')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 存量用户回填 user_code
@@ -27,7 +92,7 @@ UPDATE profiles SET user_code = 'U' || lpad(nextval('user_code_seq')::text, 6, '
 WHERE user_code IS NULL;
 
 COMMENT ON TABLE profiles IS '用户资料与角色（匿名用户不在此表，未登录即匿名）';
-COMMENT ON COLUMN profiles.user_code IS '用户专属编号（如 U000001），全局唯一，注册时自动生成';
+COMMENT ON COLUMN profiles.user_code IS '用户专属编号（如 U000001），全局唯一，注册/建号时自动生成；即登录标识';
 COMMENT ON COLUMN profiles.role IS '角色：user=普通用户, editor=编辑员, reviewer=审核员, admin=管理员';
 
 -- 新注册用户自动创建 profile，默认普通用户
@@ -82,14 +147,13 @@ $$;
 
 -- ============================================
 -- 3. attempts 表增加审核状态字段
+-- （基础表已含 is_dnf / is_plus_two / is_dns；此处补齐 v6 审核流字段）
 -- ============================================
 ALTER TABLE attempts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'approved'
     CHECK (status IN ('pending', 'approved', 'rejected'));
 ALTER TABLE attempts ADD COLUMN IF NOT EXISTS submitted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
 ALTER TABLE attempts ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
-ALTER TABLE attempts ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP WITH TIME ZONE;
--- DNF/DNS 哨兵值：solve_time = -1 表示 DNF，-2 表示 DNS（提交时由服务端转为 is_dnf/is_dns 并清空 solve_time）
-ALTER TABLE attempts ADD COLUMN IF NOT EXISTS is_dns BOOLEAN DEFAULT FALSE;
+ALTER TABLE attempts ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 
 COMMENT ON COLUMN attempts.status IS '审核状态：pending=待审核, approved=已通过, rejected=已驳回。存量数据默认 approved';
 COMMENT ON COLUMN attempts.submitted_by IS '提交者（普通用户提交时记录）';
@@ -101,19 +165,14 @@ COMMENT ON COLUMN attempts.is_dnf IS '是否 DNF（Did Not Finish，未完成）
 CREATE INDEX IF NOT EXISTS idx_attempts_status ON attempts(status);
 
 -- ============================================
--- 4. 移除旧的「所有人可读写」策略
+-- 4. 移除旧的「所有人可读写」策略（仅清理仍可能存在的旧策略）
 -- ============================================
 DROP POLICY IF EXISTS "Allow all access on competitions" ON competitions;
 DROP POLICY IF EXISTS "Allow all access on events" ON events;
 DROP POLICY IF EXISTS "Allow all access on competition_events" ON competition_events;
 DROP POLICY IF EXISTS "Allow all access on participants" ON participants;
 DROP POLICY IF EXISTS "Allow all access on attempts" ON attempts;
-DROP POLICY IF EXISTS "Allow all access on statistics_definitions" ON statistics_definitions;
-DROP POLICY IF EXISTS "Allow all access on participant_statistics" ON participant_statistics;
-DROP POLICY IF EXISTS "Allow all access on mle_predictions" ON mle_predictions;
-DROP POLICY IF EXISTS "Allow all access on event_algorithms" ON event_algorithms;
 
--- 旧版 schema.sql 的公开策略也一并清理（如存在）
 DROP POLICY IF EXISTS "Allow public insert access on competitions" ON competitions;
 DROP POLICY IF EXISTS "Allow public update access on competitions" ON competitions;
 DROP POLICY IF EXISTS "Allow public insert access on participants" ON participants;
@@ -128,6 +187,9 @@ DROP POLICY IF EXISTS "Allow public update access on attempts" ON attempts;
 --   编辑员     ：+ 管理比赛/项目/选手/赛事项目，提交成绩（进入待审核，过审后生效）
 --   审核员     ：+ 审核通过/驳回待审成绩（无直接录入权，提交同样进待审核）
 --   管理员     ：最高权限（超级管理员），可直接录入已生效成绩，+ 用户角色管理
+-- 覆盖表：competitions, events, competition_events, participants, attempts, profiles
+-- （event_algorithms / statistics_definitions / mle_predictions / participant_statistics
+--  为已删除的废弃表，不再在此处理；若库中仍有，请用 db-cleanup.sql 清理。）
 -- ============================================
 
 -- ---------- profiles ----------
@@ -153,17 +215,10 @@ CREATE POLICY "profiles self update" ON profiles
     WITH CHECK (auth.uid() = id AND (role = get_my_role() OR has_no_admin()));
 
 -- ---------- 只读表（匿名可读，编辑员以上可写）----------
--- 覆盖：competitions, events, event_algorithms, competition_events,
---       participants, statistics_definitions, mle_predictions, participant_statistics
-
 ALTER TABLE competitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE event_algorithms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE competition_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE participants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE statistics_definitions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE mle_predictions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE participant_statistics ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "public read competitions" ON competitions;
 CREATE POLICY "public read competitions" ON competitions
@@ -181,14 +236,6 @@ CREATE POLICY "editor write events" ON events
     FOR ALL TO authenticated
     USING (is_editor_or_above()) WITH CHECK (is_editor_or_above());
 
-DROP POLICY IF EXISTS "public read event_algorithms" ON event_algorithms;
-CREATE POLICY "public read event_algorithms" ON event_algorithms
-    FOR SELECT USING (true);
-DROP POLICY IF EXISTS "editor write event_algorithms" ON event_algorithms;
-CREATE POLICY "editor write event_algorithms" ON event_algorithms
-    FOR ALL TO authenticated
-    USING (is_editor_or_above()) WITH CHECK (is_editor_or_above());
-
 DROP POLICY IF EXISTS "public read competition_events" ON competition_events;
 CREATE POLICY "public read competition_events" ON competition_events
     FOR SELECT USING (true);
@@ -202,30 +249,6 @@ CREATE POLICY "public read participants" ON participants
     FOR SELECT USING (true);
 DROP POLICY IF EXISTS "editor write participants" ON participants;
 CREATE POLICY "editor write participants" ON participants
-    FOR ALL TO authenticated
-    USING (is_editor_or_above()) WITH CHECK (is_editor_or_above());
-
-DROP POLICY IF EXISTS "public read statistics_definitions" ON statistics_definitions;
-CREATE POLICY "public read statistics_definitions" ON statistics_definitions
-    FOR SELECT USING (true);
-DROP POLICY IF EXISTS "editor write statistics_definitions" ON statistics_definitions;
-CREATE POLICY "editor write statistics_definitions" ON statistics_definitions
-    FOR ALL TO authenticated
-    USING (is_editor_or_above()) WITH CHECK (is_editor_or_above());
-
-DROP POLICY IF EXISTS "public read mle_predictions" ON mle_predictions;
-CREATE POLICY "public read mle_predictions" ON mle_predictions
-    FOR SELECT USING (true);
-DROP POLICY IF EXISTS "editor write mle_predictions" ON mle_predictions;
-CREATE POLICY "editor write mle_predictions" ON mle_predictions
-    FOR ALL TO authenticated
-    USING (is_editor_or_above()) WITH CHECK (is_editor_or_above());
-
-DROP POLICY IF EXISTS "public read participant_statistics" ON participant_statistics;
-CREATE POLICY "public read participant_statistics" ON participant_statistics
-    FOR SELECT USING (true);
-DROP POLICY IF EXISTS "editor write participant_statistics" ON participant_statistics;
-CREATE POLICY "editor write participant_statistics" ON participant_statistics
     FOR ALL TO authenticated
     USING (is_editor_or_above()) WITH CHECK (is_editor_or_above());
 
@@ -375,8 +398,8 @@ CREATE TRIGGER trg_prevent_event_cycle
 
 -- ============================================
 -- 6. 存量函数加固（v4 遗留的安全问题）
--- 问题：get_event_full_config / calculate_statistic 均为 SECURITY DEFINER，
---       会绕过 RLS——待审核成绩会被算进统计；且未设 search_path，有函数劫持风险。
+-- 问题：get_event_full_config / calculate_statistic 原为 SECURITY DEFINER，会绕过 RLS；
+--       且未设 search_path，有函数劫持风险。
 -- 修复：改为 SECURITY INVOKER + 固定 search_path；calculate_statistic 重写为只统计
 --       status='approved' 的成绩（与前端统计口径一致）。
 -- 附带：删除三个未使用的匿名可读统计视图（competition_stats / participant_stats /
@@ -388,9 +411,29 @@ DROP VIEW IF EXISTS competition_stats;
 DROP VIEW IF EXISTS participant_stats;
 DROP VIEW IF EXISTS event_config_view;
 
-ALTER FUNCTION get_event_full_config(UUID)
-    SECURITY INVOKER SET search_path = public;
+-- 获取项目完整配置（自动继承父项目，子项目覆盖父项目同名键）
+-- 先 DROP 再 CREATE：库中可能已存在老签名 get_event_full_config(event_id UUID)，
+-- CREATE OR REPLACE 不允许改参数名，故显式删除（CASCADE 会顺带移除依赖它的旧
+-- calculate_statistic，下方会重建，无副作用）。
+DROP FUNCTION IF EXISTS get_event_full_config(UUID) CASCADE;
+CREATE OR REPLACE FUNCTION get_event_full_config(p_event_id UUID)
+RETURNS JSONB
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $$
+WITH RECURSIVE chain AS (
+    SELECT id, parent_event_id, COALESCE(event_config, '{}'::jsonb) AS cfg, 0 AS depth
+    FROM events WHERE id = p_event_id
+    UNION ALL
+    SELECT e.id, e.parent_event_id, COALESCE(e.event_config, '{}'::jsonb), c.depth + 1
+    FROM events e JOIN chain c ON e.id = c.parent_event_id
+)
+SELECT COALESCE(
+    (SELECT jsonb_object_agg(k, v)
+     FROM (SELECT cfg FROM chain ORDER BY depth DESC) s, jsonb_each(cfg) AS t(k, v)),
+    '{}'::jsonb
+);
+$$;
 
+DROP FUNCTION IF EXISTS calculate_statistic(UUID, UUID, JSONB) CASCADE;
 CREATE OR REPLACE FUNCTION calculate_statistic(
     p_participant_id UUID,
     p_event_id UUID,
@@ -502,4 +545,4 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = public;
 -- ============================================
 -- 7. 完成提示
 -- ============================================
-SELECT '权限系统（v6）部署完成！请先注册账号，首位注册者可在「用户管理」自行提升为管理员' AS status;
+SELECT '权限系统（v6，自包含）部署完成！请先手动在 Supabase 建首位管理员账号（见部署手册），登录后可在「用户管理」给其他账号分配角色' AS status;

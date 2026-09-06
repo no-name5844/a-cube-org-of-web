@@ -32,7 +32,7 @@ function loadCompetitionEventsForView() {
 
 // 加载比赛列表
 async function loadCompetitions() {
-    var { data, error } = await dbClient.from('competitions').select('*').order('competition_number');
+    var { data, error } = await db('competitions').select('*').order('competition_number');
     if (error) { showAlert('加载比赛失败：' + error.message, 'error'); return; }
     if (competitionsTable) competitionsTable.destroy();
     var columns = [
@@ -64,8 +64,7 @@ async function loadConfigCompetitionEvents() {
         container.innerHTML = '请先选择比赛';
         return;
     }
-    var { data, error } = await dbClient
-        .from('competition_events')
+    var { data, error } = await db('competition_events')
         .select('*, events(*)')
         .eq('competition_id', competitionId)
         .order('event_number');
@@ -84,8 +83,7 @@ async function loadConfigCompetitionEvents() {
 
 // 加载项目列表
 async function loadEvents() {
-    var { data, error } = await dbClient
-        .from('events')
+    var { data, error } = await db('events')
         .select('*, parent:parent_event_id(event_code, event_name)')
         .order('parent_event_id', { ascending: true })
         .order('sort_order', { ascending: true })
@@ -163,8 +161,7 @@ async function loadEvents() {
 
 // 更新项目配置下拉框（包含层级信息）
 async function loadEventsForConfigSelect() {
-    var { data, error } = await dbClient
-        .from('events')
+    var { data, error } = await db('events')
         .select('id, event_code, event_name, parent_event_id')
         .order('parent_event_id', { ascending: true })
         .order('sort_order', { ascending: true });
@@ -188,8 +185,7 @@ async function loadEventsForConfigSelect() {
 
 // 加载项目到下拉框（通用）
 async function loadEventsForSelect(selectId) {
-    var { data, error } = await dbClient
-        .from('events')
+    var { data, error } = await db('events')
         .select('id, event_code, event_name, parent_event_id')
         .order('parent_event_id', { ascending: true })
         .order('sort_order', { ascending: true });
@@ -214,7 +210,7 @@ async function loadEventsForSelect(selectId) {
 
 // 加载选手列表
 async function loadParticipants() {
-    var { data, error } = await dbClient.from('participants').select('*').order('name');
+    var { data, error } = await db('participants').select('*').order('name');
     if (error) return;
     if (participantsTable) participantsTable.destroy();
     participantsTable = new Tabulator('#participants-table', {
@@ -233,7 +229,7 @@ async function loadParticipants() {
 
 // 加载比赛到下拉框
 async function loadCompetitionsForSelect(selectId) {
-    var { data } = await dbClient.from('competitions').select('*').order('competition_number');
+    var { data } = await db('competitions').select('*').order('competition_number');
     var sel = document.getElementById(selectId);
     if (!sel) return;
     sel.innerHTML = '<option value="">-- 选择比赛 --</option>';
@@ -244,7 +240,7 @@ async function loadCompetitionsForSelect(selectId) {
 
 // 加载选手到下拉框
 async function loadParticipantsForSelect(selectId) {
-    var { data } = await dbClient.from('participants').select('*').order('name');
+    var { data } = await db('participants').select('*').order('name');
     var sel = document.getElementById(selectId);
     if (!sel) return;
     sel.innerHTML = '<option value="">-- 选择选手 --</option>';
@@ -255,8 +251,7 @@ async function loadParticipantsForSelect(selectId) {
 
 // 加载最近成绩
 async function loadRecentAttempts() {
-    var { data, error } = await dbClient
-        .from('attempts')
+    var { data, error } = await db('attempts')
         .select('*, participants(name), competition_events(competitions(name), events(event_name))')
         .order('created_at', { ascending: false })
         .limit(50);
@@ -325,8 +320,7 @@ async function loadViewData() {
         return;
     }
     
-    var { data: ceData, error: ceError } = await dbClient
-        .from('competition_events')
+    var { data: ceData, error: ceError } = await db('competition_events')
         .select('id')
         .eq('competition_id', competitionId)
         .eq('event_id', eventId)
@@ -334,8 +328,7 @@ async function loadViewData() {
     
     if (ceError) { showAlert('查询失败：' + ceError.message, 'error'); return; }
     
-    var { data, error } = await dbClient
-        .from('attempts')
+    var { data, error } = await db('attempts')
         .select('*, participants(name)')
         .eq('competition_event_id', ceData.id)
         .eq('status', 'approved')
@@ -375,8 +368,7 @@ async function loadCompetitionEvents(competitionId, selectId) {
         document.getElementById(selectId).innerHTML = '<option value="">-- 先选择比赛 --</option>';
         return;
     }
-    var { data } = await dbClient
-        .from('competition_events')
+    var { data } = await db('competition_events')
         .select('*, events(*)')
         .eq('competition_id', competitionId);
     var sel = document.getElementById(selectId);
@@ -388,8 +380,7 @@ async function loadCompetitionEvents(competitionId, selectId) {
 
 // 加载父项目
 async function loadParentEvents() {
-    var { data, error } = await dbClient
-        .from('events')
+    var { data, error } = await db('events')
         .select('id, event_code, event_name')
         .is('parent_event_id', null)
         .order('sort_order');

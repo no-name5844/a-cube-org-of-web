@@ -9,7 +9,7 @@ async function addCompetition() {
     var name = document.getElementById('comp-name').value.trim();
     var date = document.getElementById('comp-date').value;
     if (!num || !name || !date) { showAlert('请填写完整信息', 'error'); return; }
-    var { error } = await dbClient.from('competitions').insert({
+    var { error } = await db('competitions').insert({
         competition_number: num,
         name: name,
         competition_date: date,
@@ -28,22 +28,20 @@ async function addEventToCompetition() {
     if (!competitionId || !eventId) {
         showAlert('请选择比赛和项目', 'error'); return;
     }
-    var { data: existing } = await dbClient
-        .from('competition_events')
+    var { data: existing } = await db('competition_events')
         .select('id')
         .eq('competition_id', competitionId)
         .eq('event_id', eventId);
     if (existing && existing.length > 0) {
         showAlert('该项目已添加到该比赛', 'info'); return;
     }
-    var { data: maxData } = await dbClient
-        .from('competition_events')
+    var { data: maxData } = await db('competition_events')
         .select('event_number')
         .eq('competition_id', competitionId)
         .order('event_number', { ascending: false })
         .limit(1);
     var nextNum = (maxData && maxData.length > 0) ? maxData[0].event_number + 1 : 1;
-    var { error } = await dbClient.from('competition_events').insert({
+    var { error } = await db('competition_events').insert({
         competition_id: competitionId,
         event_id: eventId,
         event_number: nextNum
@@ -76,7 +74,7 @@ async function addEvent() {
         algoConfig.window_size = parseInt(windowSizeEl.value);
     }
     
-    var { error } = await dbClient.from('events').insert({
+    var { error } = await db('events').insert({
         event_code: code,
         event_name: name,
         description: document.getElementById('event-desc').value.trim(),
@@ -99,7 +97,7 @@ async function addEvent() {
 async function addParticipant() {
     var name = document.getElementById('participant-name').value.trim();
     if (!name) { showAlert('请填写选手名称', 'error'); return; }
-    var { error } = await dbClient.from('participants').insert({
+    var { error } = await db('participants').insert({
         name: name,
         wca_id: document.getElementById('participant-wca').value.trim()
     });
@@ -120,8 +118,7 @@ async function addAttempt() {
         showAlert('请选择比赛、项目和选手', 'error'); return;
     }
     
-    var { data: ceData, error: ceError } = await dbClient
-        .from('competition_events')
+    var { data: ceData, error: ceError } = await db('competition_events')
         .select('id')
         .eq('competition_id', competitionId)
         .eq('event_id', eventId)
@@ -130,15 +127,13 @@ async function addAttempt() {
     
     var ceId = ceData ? ceData.id : null;
     if (!ceId) {
-        var { data: maxData } = await dbClient
-            .from('competition_events')
+        var { data: maxData } = await db('competition_events')
             .select('event_number')
             .eq('competition_id', competitionId)
             .order('event_number', { ascending: false })
             .limit(1);
         var nextNum = (maxData && maxData.length > 0) ? maxData[0].event_number + 1 : 1;
-        var { data: newCe, error: insertError } = await dbClient
-            .from('competition_events')
+        var { data: newCe, error: insertError } = await db('competition_events')
             .insert({ competition_id: competitionId, event_id: eventId, event_number: nextNum })
             .select('id')
             .single();

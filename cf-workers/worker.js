@@ -8,6 +8,12 @@
  *   POST /assign-role         角色管理（管理员，只能授低于管理员的角色）
  *   POST /admin-create-user   管理员建号（仅管理员；用 service_role 调 Auth Admin 建 auth.users）
  *
+ * 通用数据代理（业务表 CRUD 全部经此，浏览器不再直连 Supabase 数据表）：
+ *   GET  /api/<table>?<rest查询>    读取（匿名可访问公开数据，RLS 生效）
+ *   POST /api/<table>               插入（要求登录 JWT，RLS 生效）
+ *   PATCH/DELETE /api/<table>?<筛选> 更新/删除（要求登录 JWT，RLS 生效）
+ *   —— 所有请求以调用者 JWT 身份转发到 PostgREST，权限由数据库 RLS 强制。
+ *
  * 环境变量（在 Worker → Settings → Variables 配置）：
  *   SUPABASE_URL              如 https://xxxx.supabase.co
  *   SUPABASE_ANON_KEY        Supabase Anon Key（公开可下发；仅作 apikey 头，权限由 RLS 强制）
@@ -85,15 +91,18 @@ async function supabaseAdminRest(env, path, method = "POST", body) {
   return resp;
 }
 
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, content-type, apikey, prefer",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  };
+}
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "authorization, content-type",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-    },
+    headers: Object.assign({ "Content-Type": "application/json" }, corsHeaders()),
   });
 }
 
@@ -368,25 +377,66 @@ async function adminCreateUser(request, env) {
   return json({ ok: true, id: newId, user_code: code, role: newRole });
 }
 
+// ============ 通用数据代理（业务表 CRUD 全部经此）============
+// 路径 /api/<table>?<rest查询> → Supabase REST /rest/v1/<table>?<rest查询>
+// 读取(GET) 允许匿名（公开数据由 RLS 控制）；写操作(POST/PATCH/DELETE) 要求登录 JWT，
+// 以调用者身份转发，权限由数据库 RLS 强制。所有请求只使用服务端 anon key 作为 apikey 头。
+async function apiProxy(request, env) {
+  const url = new URL(request.url);
+  const tail = url.pathname.slice("/api/".length) + url.search; // 含查询串，如 "competitions?select=*&order=x"
+  const method = request.method;
+  const authHeader = request.headers.get("Authorization");
+
+  let userToken = null;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const v = await verifyCallerJwt(env, authHeader); // 校验 JWT；非法则 401
+    userToken = v.token;
+  }
+
+  // 写操作必须已登录（RLS 依赖 auth.uid()）；读操作允许匿名访问公开数据
+  if (method !== "GET" && !userToken) {
+    throw httpError(401, "需要登录");
+  }
+
+  let body;
+  if (method === "POST" || method === "PATCH") {
+    body = await request.json().catch(() => null);
+  }
+
+  const headers = {
+    apikey: env.SUPABASE_ANON_KEY,
+    "Content-Type": "application/json",
+  };
+  if (userToken) headers["Authorization"] = "Bearer " + userToken;
+  if (body !== undefined) headers["Prefer"] = "return=representation";
+
+  const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/${tail}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const text = await resp.text();
+  return new Response(text, {
+    status: resp.status,
+    headers: Object.assign({ "Content-Type": "application/json" }, corsHeaders()),
+  });
+}
+
 // ============ 主入口：路由 ============
 export default {
   async fetch(request, env) {
     // 处理 CORS 预检
     if (request.method === "OPTIONS") {
-      return new Response("ok", {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "authorization, content-type",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-        },
-      });
+      return new Response("ok", { status: 204, headers: corsHeaders() });
     }
 
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "");
 
     try {
+      // 通用数据代理：所有业务表 CRUD 经此转发到 PostgREST（RLS 在库层强制）
+      if (path.startsWith("/api/")) return await apiProxy(request, env);
+
       switch (path) {
         case "/submit-attempt": return await submitAttempt(request, env);
         case "/review-attempt": return await reviewAttempt(request, env);

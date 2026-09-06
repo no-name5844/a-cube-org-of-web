@@ -21,8 +21,9 @@ async function connectDB() {
     try {
         dbClient = supabase.createClient(url, key);
 
-        // 测试连接
-        var { data, error } = await dbClient.from('competitions').select('id').limit(1);
+        // 测试连接：统一走 Cloudflare Workers 的 /api/* 数据代理（浏览器不直连数据表；
+        // dbClient 仅保留给 Supabase Auth 取登录 JWT）。读公开表可匿名，RLS 照常放行。
+        var { data, error } = await db('competitions').select('id').limit(1);
         if (error) throw error;
 
         // 保存到 localStorage

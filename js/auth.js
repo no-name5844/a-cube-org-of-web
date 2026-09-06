@@ -51,8 +51,7 @@ async function initAuth() {
 // 从数据库重新读取当前用户的资料与角色（数据库是唯一可信来源）
 async function refreshMyProfile() {
     if (!dbClient || !currentUser) return;
-    var { data: profile, error } = await dbClient
-        .from('profiles')
+    var { data: profile, error } = await db('profiles')
         .select('*')
         .eq('id', currentUser.id)
         .maybeSingle();
@@ -72,8 +71,7 @@ async function setAuthUser(user) {
     currentRole = 'anon';
 
     if (user && dbClient) {
-        var { data: profile, error } = await dbClient
-            .from('profiles')
+        var { data: profile, error } = await db('profiles')
             .select('*')
             .eq('id', user.id)
             .maybeSingle();

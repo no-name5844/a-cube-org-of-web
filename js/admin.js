@@ -13,8 +13,7 @@ var usersTable = null;
 // 加载待审核成绩
 async function loadPendingAttempts() {
     if (!dbClient || !isReviewerOrAbove()) return;
-    var { data, error } = await dbClient
-        .from('attempts')
+    var { data, error } = await db('attempts')
         .select('*, participants(name), competition_events(competitions(name), events(event_name))')
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
@@ -71,8 +70,7 @@ async function reviewAttempt(attemptId, status) {
 // 加载用户列表
 async function loadProfiles() {
     if (!dbClient || !isAdmin()) return;
-    var { data, error } = await dbClient
-        .from('profiles')
+    var { data, error } = await db('profiles')
         .select('*')
         .order('created_at', { ascending: true });
     if (error) { showAlert('加载用户失败：' + error.message, 'error'); return; }

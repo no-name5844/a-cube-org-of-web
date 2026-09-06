@@ -10,8 +10,7 @@ async function loadMyProfile() {
     if (!dbClient || !currentUser) return;
 
     // 1. 刷新最新 profile（防止别处改动后过期）
-    var { data: profile } = await dbClient
-        .from('profiles')
+    var { data: profile } = await db('profiles')
         .select('*')
         .eq('id', currentUser.id)
         .maybeSingle();
@@ -33,8 +32,7 @@ async function loadMyProfile() {
 // 我的比赛记录：自己提交过的所有成绩，按比赛分组展示
 async function loadMyAttempts() {
     if (!dbClient || !currentProfile) return;
-    var { data, error } = await dbClient
-        .from('attempts')
+    var { data, error } = await db('attempts')
         .select('*, participants(name), competition_events(competitions(id, name, competition_date), events(event_name))')
         .eq('submitted_by', currentProfile.id)
         .order('created_at', { ascending: false });
@@ -100,8 +98,7 @@ async function saveNickname() {
     var nickname = document.getElementById('my-nickname').value.trim();
     if (!nickname) { showAlert('昵称不能为空', 'error'); return; }
 
-    var { error } = await dbClient
-        .from('profiles')
+    var { error } = await db('profiles')
         .update({ username: nickname })
         .eq('id', currentUser.id);
     if (error) { showAlert('保存昵称失败：' + error.message, 'error'); return; }
