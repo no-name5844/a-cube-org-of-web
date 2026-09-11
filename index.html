@@ -31,17 +31,23 @@
 
     <!-- ============ 身份条 ============ -->
     <section class="auth">
-        <div id="auth-login-form">
-            <span class="auth__who">当前身份：<strong>匿名用户</strong>（仅可查询）</span>
-            <form onsubmit="guard(this.querySelector('button'), signIn); return false;">
+        <div id="auth-login-form" class="auth__group">
+            <span class="auth__who">未登录 · 匿名访问（仅可查公开成绩）</span>
+            <form onsubmit="guard(this.querySelector('button[type=submit]'), signIn); return false;">
+                <label class="sr-only" for="auth-code">用户ID</label>
                 <input class="input" type="text" id="auth-code" placeholder="用户ID" autocomplete="username">
-                <input class="input" type="password" id="auth-password" placeholder="密码" autocomplete="current-password">
-                <button type="button" class="btn btn--sm" onclick="guard(this, signIn)">登录</button>
+                <label class="sr-only" for="auth-password">密码</label>
+                <span class="pw-wrap">
+                    <input class="input" type="password" id="auth-password" placeholder="密码" autocomplete="current-password">
+                    <button type="button" class="pw-toggle" aria-label="显示密码" aria-pressed="false" onclick="togglePassword('auth-password', this)">👁</button>
+                </span>
+                <button type="submit" class="btn btn--sm">登录</button>
             </form>
+            <p id="auth-error" class="form-error" role="alert" hidden></p>
         </div>
         <div id="auth-user-info" class="auth__user" style="display:none">
             <span class="auth__who">👋 <strong id="auth-user-name"></strong></span>
-            <span id="auth-role-badge" class="role-badge role-anon"></span>
+            <span id="auth-role-badge" class="role-badge role-anon" aria-label="当前角色"></span>
             <button type="button" class="btn btn--sm btn--ghost" onclick="guard(this, signOutNow)">退出登录</button>
         </div>
     </section>
@@ -394,6 +400,10 @@
                         <div class="panel__head">
                             <h2 class="panel__title">📇 账号信息</h2>
                         </div>
+                        <div class="account-meta">
+                            <span id="my-role-badge" class="role-badge role-anon" aria-label="我的角色"></span>
+                            <span class="account-meta__since" id="my-created-at"></span>
+                        </div>
                         <div class="field">
                             <label for="my-user-code">用户 ID（唯一标识，不可修改）</label>
                             <input class="input" type="text" id="my-user-code" readonly>
@@ -413,7 +423,14 @@
                         </div>
                         <div class="field">
                             <label for="my-new-password">新密码（至少 6 位）</label>
-                            <input class="input" type="password" id="my-new-password" placeholder="新密码" autocomplete="new-password">
+                            <span class="pw-wrap">
+                                <input class="input" type="password" id="my-new-password" placeholder="新密码" autocomplete="new-password">
+                                <button type="button" class="pw-toggle" aria-label="显示密码" aria-pressed="false" onclick="togglePassword('my-new-password', this)">👁</button>
+                            </span>
+                        </div>
+                        <div class="field">
+                            <label for="my-confirm-password">确认新密码</label>
+                            <input class="input" type="password" id="my-confirm-password" placeholder="再输入一次" autocomplete="new-password">
                         </div>
                         <div class="actions">
                             <button class="btn" onclick="guard(this, changeMyPassword)">🔑 修改密码</button>
@@ -460,7 +477,10 @@
                     </div>
                     <div class="field">
                         <label for="new-user-password">初始密码（至少 6 位）</label>
-                        <input class="input" type="password" id="new-user-password" placeholder="至少 6 位" autocomplete="new-password">
+                        <span class="pw-wrap">
+                            <input class="input" type="password" id="new-user-password" placeholder="至少 6 位" autocomplete="new-password">
+                            <button type="button" class="pw-toggle" aria-label="显示密码" aria-pressed="false" onclick="togglePassword('new-user-password', this)">👁</button>
+                        </span>
                     </div>
                     <div class="field">
                         <label for="new-user-role">角色</label>
@@ -508,7 +528,11 @@
 <script src="js/profile.js"></script>
 <script>
     // 应用启动：探测 Worker → 恢复会话 → 加载数据（已无手动「连接数据库」步骤）
-    bootApp();
+    // 兜底捕获：启动阶段的异常若无人接管，只会静默失败（仅控制台报错、界面空白）
+    bootApp().catch(function (err) {
+        console.error('启动失败：', err);
+        showAlert('启动失败：' + (err && err.message ? err.message : '未知错误'), 'error');
+    });
 </script>
 </body>
 </html>

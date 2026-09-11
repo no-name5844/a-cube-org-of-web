@@ -31,10 +31,10 @@ async function initAuth() {
   // 从本地会话恢复登录态（token 经 Worker /api/auth/* 取得并持久化）
   await setAuthUser(session.user() || null);
 
-  // 账号信息完全信任数据库：窗口聚焦时同步一次
+  // 账号信息完全信任数据库：窗口聚焦时同步一次（切回页面即刷新，最及时）
   window.addEventListener('focus', refreshMyProfile);
-  // 并每 60 秒从数据库同步一次角色/资料（管理员改角色无需重新登录即生效）
-  setInterval(refreshMyProfile, 60000);
+  // 兜底轮询放宽到 5 分钟一次（角色变更靠 focus 即可即时生效，无需高频轮询）
+  setInterval(refreshMyProfile, 300000);
 }
 
 // 从数据库重新读取当前用户的资料与角色（数据库是唯一可信来源）
@@ -46,10 +46,15 @@ async function refreshMyProfile() {
     .maybeSingle();
   if (error || !profile) return;
 
-  var roleChanged = profile.role !== currentRole;
+  var newRole = profile.role || 'user';
+  var roleChanged = newRole !== currentRole;
+  var nameChanged = !currentProfile ||
+      currentProfile.username !== profile.username ||
+      currentProfile.user_code !== profile.user_code;
   currentProfile = profile;
-  currentRole = profile.role || 'user';
-  renderAuthUI();
+  currentRole = newRole;
+  // 只有角色 / 昵称真的变了才重渲染，避免每次轮询都无谓写 DOM
+  if (roleChanged || nameChanged) renderAuthUI();
   if (roleChanged) applyRoleUI();
 }
 
@@ -78,23 +83,43 @@ async function setAuthUser(user) {
 }
 
 // ---- 登录 / 登出 ----
+
+// 登录错误就地提示：显示在表单正下方（比顶部 toast 更贴近触发点），并把焦点移回用户ID
+function showAuthError(msg) {
+  var box = document.getElementById('auth-error');
+  if (!box) { showAlert(msg, 'error'); return; }
+  box.textContent = msg;
+  box.hidden = false;
+  var code = document.getElementById('auth-code');
+  if (code) code.focus();
+}
+
+function clearAuthError() {
+  var box = document.getElementById('auth-error');
+  if (box) { box.hidden = true; box.textContent = ''; }
+}
+
 async function signIn() {
+  clearAuthError();
   var code = document.getElementById('auth-code').value.trim();
   var password = document.getElementById('auth-password').value;
-  if (!code || !password) { showAlert('请输入用户ID和密码', 'error'); return; }
+  if (!code || !password) { showAuthError('请输入用户ID和密码'); return; }
 
   // 登录经 Worker /api/auth/login（code → code@cube.local 映射在服务端完成）
   var res = await callWorkerAuth('login', { code: code, password: password }, true);
   if (!res.ok) {
-    showAlert('登录失败：' + (res.error && res.error.message ? res.error.message : '请检查ID和密码'), 'error');
+    showAuthError('登录失败：' + (res.error && res.error.message ? res.error.message : '请检查ID和密码'));
     return;
   }
   if (!res.data || !res.data.access_token) {
-    showAlert('登录失败：未取得会话', 'error');
+    showAuthError('登录失败：未取得会话');
     return;
   }
   session.set(res.data);
   await setAuthUser(session.user());
+  clearAuthError();
+  var pwdEl = document.getElementById('auth-password');
+  if (pwdEl) pwdEl.value = '';
   showAlert('✅ 登录成功！', 'success');
 }
 
@@ -105,6 +130,7 @@ async function signOutNow() {
   currentUser = null;
   currentProfile = null;
   currentRole = 'anon';
+  clearAuthError();
   renderAuthUI();
   applyRoleUI();
   showAlert('已退出登录，当前为匿名用户', 'info');
@@ -145,4 +171,6 @@ function applyRoleUI() {
     if (rank >= ROLE_RANK.user && typeof loadMyProfile === 'function') loadMyProfile();
     if (isReviewerOrAbove() && typeof loadPendingAttempts === 'function') loadPendingAttempts();
     if (isAdmin() && typeof loadProfiles === 'function') loadProfiles();
+    // 登出/被降权后，若当前面板已不可见，自动落到第一个可见标签页（避免停在越权空白页）
+    if (typeof ensureVisibleTab === 'function') ensureVisibleTab();
 }

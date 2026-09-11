@@ -25,6 +25,19 @@ async function loadMyProfile() {
     if (codeEl) codeEl.value = currentProfile ? (currentProfile.user_code || '-') : '-';
     if (nickEl) nickEl.value = currentProfile ? (currentProfile.username || '') : '';
 
+    // 角色徽章 + 注册时间（账号元信息）
+    var roleBadge = document.getElementById('my-role-badge');
+    if (roleBadge) {
+        roleBadge.textContent = ROLE_LABELS[currentRole] || currentRole;
+        roleBadge.className = 'role-badge role-' + currentRole;
+    }
+    var sinceEl = document.getElementById('my-created-at');
+    if (sinceEl) {
+        sinceEl.textContent = (currentProfile && currentProfile.created_at)
+            ? ('注册于 ' + String(currentProfile.created_at).split('T')[0])
+            : '';
+    }
+
     // 3. 加载比赛记录
     loadMyAttempts();
 }
@@ -112,11 +125,19 @@ async function saveNickname() {
 async function changeMyPassword() {
     if (!currentUser) { showAlert('请先登录', 'error'); return; }
     var newPwd = document.getElementById('my-new-password').value;
+    var confirmEl = document.getElementById('my-confirm-password');
+    var confirmPwd = confirmEl ? confirmEl.value : newPwd;
     if (!newPwd || newPwd.length < 6) { showAlert('新密码至少 6 位', 'error'); return; }
+    if (newPwd !== confirmPwd) {
+        showAlert('两次输入的新密码不一致', 'error');
+        if (confirmEl) confirmEl.focus();
+        return;
+    }
 
     // 改密码经 Worker /api/auth/password（服务端带登录 JWT 调 Supabase Auth）
     var res = await callWorker('/api/auth/password', { new_password: newPwd });
     if (!res.ok) { showAlert('修改密码失败：' + (res.error && res.error.message ? res.error.message : '请确认已登录'), 'error'); return; }
     document.getElementById('my-new-password').value = '';
+    if (confirmEl) confirmEl.value = '';
     showAlert('✅ 密码已修改', 'success');
 }

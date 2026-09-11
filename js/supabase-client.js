@@ -5,7 +5,7 @@
  *   2) 恢复本地会话（登录态）
  *   3) 加载业务数据
  */
-var currentTab = 'competitions';
+var currentTab = 'stats';
 
 /**
  * 应用启动：探测 Worker → 恢复会话 → 加载数据。

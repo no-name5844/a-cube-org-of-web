@@ -51,7 +51,12 @@ function switchTab(tabName, btn) {
     document.querySelectorAll('.tab-pane').forEach(function (p) { p.classList.remove('active'); });
 
     var pane = document.getElementById('tab-' + tabName);
-    if (pane) pane.classList.add('active');
+    if (pane) {
+        pane.classList.add('active');
+        // 无障碍：切换后把焦点移到面板，键盘/读屏用户不会丢失上下文
+        pane.setAttribute('tabindex', '-1');
+        pane.focus({ preventScroll: true });
+    }
     if (btn && btn.classList) btn.classList.add('active');
 
     currentTab = tabName;
@@ -84,6 +89,19 @@ function toggleEventAlgoFields() {
     var trim = document.getElementById('event-trim-field');
     if (extra) extra.hidden = !needsWindow;
     if (trim) trim.hidden = (sel.value !== 'average');
+}
+
+// 密码显隐切换：在明文 / 密文间切换，并同步按钮的无障碍状态
+function togglePassword(inputId, btn) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    if (btn) {
+        btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+        btn.setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
+        btn.textContent = show ? '🙈' : '👁';
+    }
 }
 
 /* ---------------- 登录守卫（写操作前提：已登录，服务端再验角色） ---------------- */

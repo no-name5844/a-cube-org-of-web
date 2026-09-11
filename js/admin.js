@@ -99,7 +99,7 @@ async function loadProfiles() {
                            (ROLE_LABELS[r]) + '</option>';
                 }).join('');
                 return '<select class="role-select" onchange="changeUserRole(\'' +
-                       cell.getRow().getData().id + '\', this.value)">' + options + '</select>';
+                       cell.getRow().getData().id + '\', this.value, this)">' + options + '</select>';
             }},
             { title: '注册时间', field: 'created_at', width: 160, formatter: function (cell) {
                 return cell.getValue() ? cell.getValue().split('T')[0] : '';
@@ -111,16 +111,30 @@ async function loadProfiles() {
 // 修改用户角色（仅能操作低于管理员的人，且新角色必须低于管理员）
 var ASSIGNABLE_ROLES = ['user', 'editor', 'reviewer'];
 
-async function changeUserRole(userId, newRole) {
+async function changeUserRole(userId, newRole, sel) {
     if (!isAdmin()) { showAlert('需要管理员权限', 'error'); return; }
+
+    // 取该行原角色，失败时就地回退下拉框（不再整表重载，避免打断管理员操作）
+    var prevRole = null;
+    if (usersTable) {
+        var row = usersTable.getRow(userId);
+        if (row) prevRole = row.getData().role;
+    }
+    var revert = function () {
+        if (!sel) return;
+        if (prevRole) sel.value = prevRole;
+        sel.classList.add('is-error');
+        setTimeout(function () { sel.classList.remove('is-error'); }, 1500);
+    };
+
     if (ASSIGNABLE_ROLES.indexOf(newRole) === -1) {
         showAlert('不能授予管理员及以上角色', 'error');
-        loadProfiles();
+        revert();
         return;
     }
     // 强制走 Cloudflare Workers assign-role：服务端验管理员身份并强制「只能授低于管理员的角色」
     var res = await callWorker('/assign-role', { userId: userId, role: newRole });
-    if (!res.ok) { showAlert('修改角色失败：' + (res.error.message || '请确认已登录且为管理员'), 'error'); loadProfiles(); return; }
+    if (!res.ok) { showAlert('修改角色失败：' + (res.error.message || '请确认已登录且为管理员'), 'error'); revert(); return; }
     showAlert('✅ 角色已更新为「' + (ROLE_LABELS[newRole] || newRole) + '」', 'success');
     loadProfiles();
 }

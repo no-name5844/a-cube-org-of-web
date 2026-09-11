@@ -3,6 +3,15 @@
  * 包含所有 load* 函数
  */
 
+// 表格实例（Tabulator），在多个 load* 函数之间共享。
+// 必须显式声明并初始化为 null：各 load* 函数开头都有 `if (xTable) xTable.destroy()`，
+// 这是「先读取、后赋值」，若没有声明会直接抛 ReferenceError（viewTable is not defined）。
+var competitionsTable = null;
+var eventsTable = null;
+var participantsTable = null;
+var attemptsTable = null;
+var viewTable = null;
+
 // 加载所有数据
 async function loadAllData() {
     // 初始化配置模板下拉框（来自本地 EventConfig，不依赖数据库）

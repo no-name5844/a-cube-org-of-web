@@ -151,7 +151,8 @@ a { color: var(--c-primary); }
 .auth {
     padding: var(--sp-3) var(--sp-6);
     border-bottom: 1px solid var(--c-border);
-    background: var(--c-surface);
+    border-left: 3px solid var(--c-primary);
+    background: var(--c-surface-2);
     display: flex;
     align-items: center;
     gap: var(--sp-3);
@@ -160,9 +161,61 @@ a { color: var(--c-primary); }
 }
 .auth__who { color: var(--c-text-3); }
 .auth__who strong { color: var(--c-text); }
+.auth__group { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .auth form { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .auth .input { width: 190px; }
 .auth__user { display: flex; align-items: center; gap: var(--sp-3); }
+
+/* 屏读专用文本（无障碍） */
+.sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* 表单内联错误（就近提示，比顶部 toast 更贴近触发点） */
+.form-error {
+    flex-basis: 100%;
+    margin: 0;
+    color: var(--c-danger);
+    font-size: var(--fs-sm);
+}
+
+/* 密码显隐切换 */
+.pw-wrap { position: relative; display: flex; align-items: center; }
+.pw-wrap > .input { width: 100%; padding-right: 34px; }
+.pw-toggle {
+    position: absolute;
+    right: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--c-text-3);
+    border-radius: var(--r-sm);
+}
+.pw-toggle:hover { color: var(--c-text); background: var(--c-surface-3); }
+.auth .pw-wrap { width: 190px; flex: none; }
+.auth .pw-wrap > .input { width: 100%; }
+
+/* 账号元信息（我的档案） */
+.account-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-4);
+    flex-wrap: wrap;
+}
+.account-meta__since { color: var(--c-text-3); font-size: var(--fs-sm); }
 
 /* 3.4 导航 */
 .nav {
@@ -504,6 +557,10 @@ textarea.input { resize: vertical; min-height: 72px; }
     background: var(--c-surface);
     color: var(--c-text);
 }
+.role-select.is-error {
+    border-color: var(--c-danger);
+    background: var(--c-danger-soft);
+}
 
 /* 已配置项目列表（比赛管理） */
 .chip-list { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -566,6 +623,7 @@ textarea.input { resize: vertical; min-height: 72px; }
     .setup__row { flex-direction: column; align-items: stretch; }
     .setup__row .btn { width: 100%; }
     .auth .input { width: 100%; }
+    .auth .pw-wrap { width: 100%; }
     .auth form { width: 100%; }
 
     .nav { gap: var(--sp-1); }
