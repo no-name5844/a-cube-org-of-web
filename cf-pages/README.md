@@ -56,6 +56,20 @@ Dashboard 里 `Create application → Workers → Import a repository` 那条路
 
 要的是 **Pages**。
 
+## 控制台新版 / 旧版的差异（2026-09 实测）
+
+Cloudflare 正在把 Pages 收编进新版统一流程：
+
+- **新版控制台**：`Create application` 的 Git 导入默认走 **Workers**，
+  界面只有 `Build command` / `Deploy command`，**没有 Pages 入口、也没有
+  `Build output directory` 这个设置**。
+- **旧版控制台**：Pages 入口仍在，含 `Framework preset` / `Build command` /
+  `Build output directory` 三项。
+
+**解决**：直接用**旧版控制台**建 Pages 项目即可 —— 新旧只是控制台 UI 差异，
+建出来的是同一种 Pages 项目，域名同样是 `*.pages.dev`，功能完全一致。
+若旧版里有 **Upload assets / 拖拽上传** 入口，那是最省事的（不必配任何 build 设置）。
+
 ## 部署步骤（推荐：拖拽上传，无需 Git / 无需构建）
 
 1. Dashboard → **Workers & Pages** → **Create application** → **Get started**
@@ -81,10 +95,21 @@ Dashboard 里 `Create application → Workers → Import a repository` 那条路
 - **Build output directory：`cf-pages/dist`**
 - 环境变量同样在 Settings → Variables and Secrets 里配，配完 **Retry deployment**
 
-### 备选 B：Wrangler 直传（本机有 Node）
+### 备选 B：Wrangler 直传（本机有 Node，绕开控制台 UI 差异）
+
+`api.cloudflare.com` 在本网络实测可达（TLS 0.81s），所以这条路不受新版/旧版控制台影响。
 
 ```bash
-npx wrangler pages deploy cf-pages/dist --project-name <项目名>
+npx wrangler login                                    # 浏览器授权一次
+npx wrangler pages project create cube-api --production-branch main
+npx wrangler pages deploy cf-pages/dist --project-name cube-api
+```
+
+也可以用 API Token 免交互（免去浏览器授权）：
+
+```bash
+export CLOUDFLARE_API_TOKEN=<在 My Profile → API Tokens 创建，权限含 账户 → Cloudflare Pages → 编辑>
+npx wrangler pages deploy cf-pages/dist --project-name cube-api
 ```
 
 环境变量仍需在 Dashboard 里设置，`wrangler` 不会上传它们。
