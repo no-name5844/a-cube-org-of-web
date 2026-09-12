@@ -46,7 +46,12 @@ async function callWorker(path, body, anonymous) {
     }
     return { ok: true, data: data, error: null };
   } catch (e) {
-    return { ok: false, data: {}, error: { message: '无法连接后端服务：' + e.message } };
+    // 把目标地址一并抛出：浏览器报 Failed to fetch 时，最常见的原因是
+    // 页面里执行的是旧版 config.js（旧 BASE_URL 指向已被封锁的 workers.dev），
+    // 带着地址才能一眼看出到底发去了哪里。
+    var target = WORKERS_BASE_URL + path;
+    console.error('[callWorker] 请求失败', target, e);
+    return { ok: false, data: {}, error: { message: '无法连接后端服务：' + e.message + '（目标 ' + target + '）' } };
   }
 }
 
