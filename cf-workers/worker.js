@@ -141,6 +141,25 @@ function errorBody(e) {
   return json({ error: message }, status);
 }
 
+/**
+ * Supabase Auth(GoTrue) 的英文报错 → 能直接指导下一步操作的中文。
+ * 这些文案会原样出现在前端 toast 上（如「登录失败：用户ID或密码不正确」），
+ * 所以宁可说清「该怎么办」，也不要直接透出 "Invalid login credentials"。
+ */
+const AUTH_MSG_ZH = {
+  "Invalid login credentials": "用户ID或密码不正确",
+  "User not found": "用户ID或密码不正确",
+  "Email not confirmed": "该账号邮箱未确认：请在 Supabase 里对该用户勾选 Auto Confirm",
+  "Invalid Refresh Token": "登录状态已失效，请重新登录",
+  "Refresh Token Not Found": "登录状态已失效，请重新登录",
+};
+/** 把认证错误换成对应中文，未收录的保持原文 */
+function zhAuthError(e) {
+  if (!e) return e;
+  const zh = AUTH_MSG_ZH[e.message];
+  return zh ? Object.assign(new Error(zh), { httpStatus: e.httpStatus }) : e;
+}
+
 // ============ 端点 1：成绩提交 ============
 const SUBMIT_ALLOWED_FIELDS = [
   "competition_event_id", "participant_id", "attempt_number",
@@ -473,14 +492,37 @@ async function authProxy(request, env) {
       }
       // 登录ID → 确定的 auth email（与建号映射一致）
       const email = loginCodeToEmail(code);
-      const data = await authFetch("/token?grant_type=password", {
-        email, password: body.password,
-      });
+      // 用户ID 常常是 U00000001 这种全大写样式，而库里的 email 可能是小写——大小写不该决定能否登录。
+      // 因此先按输入原样试一次（历史账号的 email 可能就是含大写建的），
+      // 只在「凭据类失败(401) 且输入含大写」时，再用全小写重试一次，不改变成功路径的行为。
+      let data;
+      try {
+        data = await authFetch("/token?grant_type=password", {
+          email, password: body.password,
+        });
+      } catch (e) {
+        const lower = code.toLowerCase();
+        if (!e || e.httpStatus !== 401 || lower === code) throw zhAuthError(e);
+        try {
+          data = await authFetch("/token?grant_type=password", {
+            email: loginCodeToEmail(lower), password: body.password,
+          });
+        } catch (e2) {
+          throw zhAuthError(e2);
+        }
+      }
       return json({ ok: true, ...data });
     }
     if (action === "refresh") {
       if (!body || typeof body.refresh_token !== "string") throw httpError(400, "缺少 refresh_token");
-      const data = await authFetch("/token?grant_type=refresh_token", { refresh_token: body.refresh_token });
+      // 前端 session.ensureFresh() 会拿这条错误决定是否清空本地会话，
+      // 换成中文后，用户看到的是「登录状态已失效，请重新登录」而不是 "Invalid Refresh Token"。
+      let data;
+      try {
+        data = await authFetch("/token?grant_type=refresh_token", { refresh_token: body.refresh_token });
+      } catch (e) {
+        throw zhAuthError(e);
+      }
       return json({ ok: true, ...data });
     }
     if (action === "logout") {
