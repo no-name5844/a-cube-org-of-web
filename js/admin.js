@@ -86,7 +86,7 @@ async function loadProfiles() {
                 return '<code>' + (cell.getValue() || '-') + '</code>';
             }},
             { title: '用户名', field: 'username' },
-            { title: '角色', width: 160, formatter: function (cell) {
+            { title: '角色', field: 'role', width: 160, formatter: function (cell) {
                 var role = cell.getValue();
                 return '<span class="role-badge role-' + role + '">' + (ROLE_LABELS[role] || role) + '</span>';
             }},

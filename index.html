@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>魔方比赛成绩管理系统</title>
 
+    <!-- Tabulator：主题必须放在 style.css 之前，同权重冲突才会由项目样式胜出
+         （materialize 主题给单元格 15px 内边距，比紧凑行高高出一截，会裁掉文字） -->
+    <link href="https://unpkg.com/tabulator-tables@5.6.0/dist/css/tabulator_materialize.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 
-    <!-- Tabulator -->
-    <link href="https://unpkg.com/tabulator-tables@5.6.0/dist/css/tabulator_materialize.min.css" rel="stylesheet">
     <script src="https://unpkg.com/tabulator-tables@5.6.0/dist/js/tabulator.min.js"></script>
 
     <!-- 项目配置定义（window.EventConfig） -->
@@ -469,7 +470,7 @@
                 <div class="layout layout--wide">
                     <div class="field">
                         <label for="new-user-code">用户 ID（登录用，字母/数字/下划线，≤32 位）</label>
-                        <input class="input" type="text" id="new-user-code" placeholder="如 U000123">
+                        <input class="input" type="text" id="new-user-code" placeholder="如 u00000002（与登录用的用户ID 一致）">
                     </div>
                     <div class="field">
                         <label for="new-user-nickname">昵称</label>

@@ -82,6 +82,12 @@ a { color: var(--c-primary); }
     outline-offset: 2px;
 }
 
+/* 切换标签后会把焦点交给面板（让键盘/读屏器接着往下走），这是程序化聚焦：
+   面板占据整块内容区，若描出焦点框会变成围绕整个页面的一个矩形。
+   真正需要焦点提示的是上面的 .tab，面板本身不画。 */
+.tab-pane:focus,
+.tab-pane:focus-visible { outline: none; }
+
 /* ---------- 3. 组件 ---------- */
 
 /* 3.1 应用外壳 */
@@ -579,6 +585,26 @@ textarea.input { resize: vertical; min-height: 72px; }
     font-family: var(--font-sans);
     font-size: var(--fs-sm);
 }
+/* ⚠️ materialize 主题给单元格 15px 上下内边距 + 25.6px 行高（字号也被拉到 16px），
+   而各表格用的是紧凑行高（rowHeight 26 / headerHeight 28）——
+   于是每个单元格的内容（约 57px）比单元格自身（约 30px）还高，
+   被 .tabulator-cell 的 overflow:hidden 纵向裁掉一半文字。
+   这里把单元格度量收回项目自己的紧凑规格：3 + 20 + 3 = 26px。
+   选择器特意写成 3 个类，压过主题的 .tabulator-row .tabulator-cell（2 个类），
+   不因两张样式表的先后顺序而失效。 */
+.tabulator .tabulator-row .tabulator-cell {
+    padding: 2px 8px;
+    font-size: var(--fs-sm);
+    line-height: 20px;
+}
+/* 表头主题用的是 4 个类的选择器，这里同权重对齐（主题已在 style.css 之前加载） */
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+    padding: 3px 8px;
+    font-size: var(--fs-sm);
+    line-height: 22px;
+}
+/* 表格里的行内控件同样要收进 26px 行高 */
+.tabulator .role-select { padding: 1px 6px; font-size: var(--fs-xs); line-height: 18px; }
 .tabulator .tabulator-header {
     background: var(--c-surface-3);
     border-bottom: 1px solid var(--c-border);

@@ -146,7 +146,7 @@ function renderAuthUI() {
         loginForm.style.display = 'none';
         userInfo.style.display = 'flex';
         var name = (currentProfile && (currentProfile.username || currentProfile.user_code)) || '用户';
-        // 展示专属用户 ID（如 U000001）；不再回退到内部 email（code@cube.local）
+        // 展示专属用户 ID（如 u00000001）；不再回退到内部 email（code@cube.local）
         if (currentProfile && currentProfile.user_code) {
             name += '（ID: ' + currentProfile.user_code + '）';
         }

@@ -93,7 +93,7 @@ async function loadMyAttempts() {
         columns: [
             { title: '比赛', field: 'name', minWidth: 150 },
             { title: '日期', field: 'date', width: 110 },
-            { title: '状态', width: 90, formatter: function (cell) {
+            { title: '状态', field: 'status', width: 90, formatter: function (cell) {
                 var s = cell.getValue();
                 var cls = s === '进行中' ? 'status-pending' : 'status-approved';
                 return '<span class="status-badge ' + cls + '">' + s + '</span>';
