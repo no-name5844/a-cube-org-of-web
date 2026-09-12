@@ -605,6 +605,16 @@ textarea.input { resize: vertical; min-height: 72px; }
     .main { padding: var(--sp-5); }
     .app__header { padding: var(--sp-4) var(--sp-5); }
     .setup, .auth, .nav { padding-left: var(--sp-5); padding-right: var(--sp-5); }
+
+    /* 管理员会看到 8 个标签 + 3 个分组标题，768–1100px 这段单行放不下。
+       原先靠 overflow-x: auto 硬塞 → 横向滚动条压在标签行上、右侧标签被切掉。
+       改为允许折行（整个分组一起折），信息不隐藏、也不用横滚。 */
+    .nav { flex-wrap: wrap; overflow-x: visible; }
+    .nav__group { flex-wrap: wrap; align-items: center; }
+    /* 折行后行首会出现一条悬空的分隔线，收紧一点更整齐 */
+    .nav__group + .nav__group { margin-left: var(--sp-1); padding-left: var(--sp-2); }
+    .nav__label { padding-left: var(--sp-1); }
+    .tab { padding: var(--sp-3) var(--sp-2); }
 }
 
 @media (max-width: 767px) {
