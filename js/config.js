@@ -10,7 +10,7 @@
  * 迁移与部署步骤见 cf-pages/README.md——不要改回 workers.dev。
  * 若日后绑定自有域名，改这一行即可，其余代码无需变动。
  */
-var WORKERS_BASE_URL = 'https://silent-voice-7c84.3135320879.workers.dev'; // ← 部署 Pages 后替换为 https://<项目名>.pages.dev
+var WORKERS_BASE_URL = 'https://a-cube-org-of-web.pages.dev';
 
 /**
  * 取得当前可用的 access token（本地未过期则直接用，否则用 refresh token 换新）。
