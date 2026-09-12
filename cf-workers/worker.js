@@ -537,8 +537,10 @@ async function authProxy(request, env) {
 export default {
   async fetch(request, env) {
     // 处理 CORS 预检
+    // 204 不得带响应体（fetch 规范），否则 Workers 运行时抛 TypeError → 1101/500，
+    // 预检失败会让浏览器把所有跨域请求报成 Failed to fetch。
     if (request.method === "OPTIONS") {
-      return new Response("ok", { status: 204, headers: corsHeaders() });
+      return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
     const url = new URL(request.url);

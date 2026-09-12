@@ -550,8 +550,12 @@ async function authProxy(request, env) {
 export default {
   async fetch(request, env) {
     // 处理 CORS 预检
+    // 注意：204 属于「无内容」状态码，按 fetch 规范不得携带响应体，
+    // 写成 new Response("ok", { status: 204 }) 会被 Workers 运行时抛 TypeError
+    // （Response with null body status cannot have body），且此处位于 try 之外，
+    // 异常会直接冒泡成 Cloudflare 1101 / 500，浏览器预检失败即报 Failed to fetch。
     if (request.method === "OPTIONS") {
-      return new Response("ok", { status: 204, headers: corsHeaders() });
+      return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
     const url = new URL(request.url);
