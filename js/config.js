@@ -1,10 +1,16 @@
 /**
  * 全局配置
- * WORKERS_BASE_URL：Cloudflare Workers 的基础 URL（唯一后端入口）。
- * 浏览器不持有任何 Supabase URL/Key——数据库访问与认证全部经此 Worker，
+ * WORKERS_BASE_URL：后端唯一入口 URL。
+ * 浏览器不持有任何 Supabase URL/Key——数据库访问与认证全部经此后端，
  * 由数据库 RLS 在库层强制权限。
+ *
+ * ⚠️ 关于域名：*.workers.dev 在国内是「DNS 污染 + SNI 阻断」双重封锁
+ * （TCP 能连上、TLS 握手被掐断，改 hosts 无效），浏览器会直接报 `Failed to fetch`。
+ * *.pages.dev 实测可用，故后端以 Cloudflare Pages 高级模式（cf-pages/_worker.js）部署。
+ * 迁移与部署步骤见 cf-pages/README.md——不要改回 workers.dev。
+ * 若日后绑定自有域名，改这一行即可，其余代码无需变动。
  */
-var WORKERS_BASE_URL = 'https://silent-voice-7c84.3135320879.workers.dev'; // Cloudflare Workers 部署域名
+var WORKERS_BASE_URL = 'https://silent-voice-7c84.3135320879.workers.dev'; // ← 部署 Pages 后替换为 https://<项目名>.pages.dev
 
 /**
  * 取得当前可用的 access token（本地未过期则直接用，否则用 refresh token 换新）。
